@@ -190,7 +190,6 @@ function QRCard({ worker, logoUrl, onClose }) {
 const EMPRESAS_TARJAS = [
   { id: 0, nombre: "AGRICOLA CONVENTO VIEJO SPA", rut: "76.843.510-2", fundo: "FUNDO CONVENTO VIEJO" },
   { id: 1, nombre: "OTRA AGRICOLA EJEMPLO SPA", rut: "77.123.456-9", fundo: "FUNDO LOS NOGALES" }
-  // Puedes agregar más empresas a esta lista si lo necesitas
 ];
 
 function TarjasManager() {
@@ -216,7 +215,6 @@ function TarjasManager() {
     setGenerando(true);
     const nuevasTarjas = [];
     
-    // Formatear fecha para impresión (DD-MM-YYYY)
     const [y, m, d] = fecha.split("-");
     const fechaStr = `${d}-${m}-${y}`;
 
@@ -224,7 +222,7 @@ function TarjasManager() {
       const numActual = parseInt(inicio) + i;
       const numStr = String(numActual).padStart(4, '0');
       
-      // Código interno del QR exacto: bin;AAON0001
+      // Exactamente como lo solicitaste: bin;AAON0001
       const codigoQRData = `bin;${prefijo}${numStr}`;
       
       const qrDataUrl = await QRCode.toDataURL(codigoQRData, {
@@ -236,8 +234,6 @@ function TarjasManager() {
       nuevasTarjas.push({ 
         id: i, 
         codigo: codigoQRData, 
-        prefijo, 
-        sufijo: numStr, 
         qrUrl: qrDataUrl, 
         fechaStr,
         cuartel,
@@ -252,7 +248,6 @@ function TarjasManager() {
     if (tarjas.length === 0) return;
     const win = window.open("", "_blank");
     
-    // Plantilla de impresión estricta para Zebra (100mm x 70mm)
     let html = `
       <!DOCTYPE html>
       <html>
@@ -281,17 +276,17 @@ function TarjasManager() {
             }
             .label:last-child { page-break-after: auto; margin-bottom: 0; border-bottom: none; }
             
-            .header { display: flex; justify-content: space-between; font-size: 11px; font-weight: bold; border-bottom: 2px solid #000; padding-bottom: 3px;}
-            .sub-header { display: flex; justify-content: space-between; font-size: 11px; font-weight: bold; border-bottom: 2px solid #000; padding: 3px 0; margin-bottom: 1mm;}
+            .header { display: flex; justify-content: space-between; font-size: 11px; font-weight: bold; border-bottom: 2px solid #000; padding-bottom: 4px; margin-bottom: 3px;}
+            .sub-header { display: flex; justify-content: space-between; font-size: 12px; font-weight: bold; border-bottom: 2px solid #000; padding-bottom: 4px; margin-bottom: 3px;}
             
             .body { display: flex; align-items: center; justify-content: space-between; flex-grow: 1; padding: 1mm 0; }
-            .qr-container { width: 42mm; height: 42mm; display: flex; align-items: center; justify-content: center; }
+            .qr-container { width: 44mm; height: 44mm; display: flex; align-items: center; justify-content: flex-start; }
             .qr-img { width: 100%; height: 100%; object-fit: contain; }
-            .text-container { display: flex; flex-direction: column; align-items: flex-end; justify-content: center; width: 100%; }
-            .text-prefix { font-size: 30px; font-weight: 900; letter-spacing: 2px; line-height: 1; }
-            .text-suffix { font-size: 40px; font-weight: 900; letter-spacing: 2px; line-height: 1; margin-top: 5px; }
             
-            .footer { display: flex; justify-content: space-between; font-size: 11px; font-weight: bold; border-top: 2px solid #000; padding-top: 3px;}
+            .text-container { display: flex; align-items: center; justify-content: flex-end; width: 100%; }
+            .text-code { font-size: 24px; font-weight: 900; letter-spacing: 0.5px; }
+            
+            .footer { display: flex; justify-content: space-between; font-size: 11px; font-weight: bold; border-top: 2px solid #000; padding-top: 4px; margin-top: 3px;}
           </style>
         </head>
         <body>
@@ -311,8 +306,7 @@ function TarjasManager() {
           <div class="body">
             <div class="qr-container"><img class="qr-img" src="${t.qrUrl}" alt="QR" /></div>
             <div class="text-container">
-              <div class="text-prefix">${t.prefijo}</div>
-              <div class="text-suffix">${t.sufijo}</div>
+              <div class="text-code">${t.codigo}</div>
             </div>
           </div>
           <div class="footer">
@@ -340,7 +334,7 @@ function TarjasManager() {
       <div className="form-grid" style={{ marginBottom: "20px" }}>
         <div className="form-group" style={{ gridColumn: "1 / -1" }}>
           <label>Empresa y Fundo</label>
-          <select value={empresaIdx} onChange={e => setEmpresaIdx(e.target.value)} style={{ fontWeight: "bold" }}>
+          <select value={empresaIdx} onChange={e => setEmpresaIdx(e.target.value)} style={{ fontWeight: "bold", width: "100%", padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e1" }}>
             {EMPRESAS_TARJAS.map((emp, idx) => (
               <option key={idx} value={idx}>{emp.nombre} - {emp.fundo}</option>
             ))}
@@ -372,23 +366,27 @@ function TarjasManager() {
           <h4 style={{ marginBottom: "15px", color: "#1e293b" }}>Vista Previa ({tarjas.length} etiquetas generadas)</h4>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "15px", maxHeight: "400px", overflowY: "auto", background: "#f8fafc", padding: "15px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
             {tarjas.map(t => (
-              <div key={t.id} style={{ background: "#fff", padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e1", width: "260px", display: "flex", flexDirection: "column" }}>
-                <div style={{ fontSize: "8px", fontWeight: "bold", display: "flex", justifyContent: "space-between", borderBottom: "1px solid #000", paddingBottom: "2px" }}>
-                  <span>{empresaActiva.nombre.substring(0,20)}...</span><span>{t.fechaStr}</span>
+              <div key={t.id} style={{ background: "#fff", padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e1", width: "290px", display: "flex", flexDirection: "column", color: "#000" }}>
+                
+                <div style={{ fontSize: "9px", fontWeight: "bold", display: "flex", justifyContent: "space-between", borderBottom: "2px solid #000", paddingBottom: "3px", marginBottom: "3px" }}>
+                  <span>{empresaActiva.nombre.substring(0,22)}...</span><span>{t.fechaStr}</span>
                 </div>
-                <div style={{ fontSize: "8px", fontWeight: "bold", display: "flex", justifyContent: "space-between", borderBottom: "1px solid #000", padding: "2px 0" }}>
-                  <span>C: {t.cuartel}</span><span>CORTE: {t.corte}</span>
+                
+                <div style={{ fontSize: "9px", fontWeight: "bold", display: "flex", justifyContent: "space-between", borderBottom: "2px solid #000", paddingBottom: "3px", marginBottom: "3px" }}>
+                  <span>CUARTEL: {t.cuartel}</span><span>CORTE: {t.corte}</span>
                 </div>
+
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0" }}>
                   <img src={t.qrUrl} alt="QR" style={{ width: "70px", height: "70px" }} />
-                  <div style={{ textAlign: "right", color: "#000" }}>
-                    <div style={{ fontWeight: "900", fontSize: "14px", letterSpacing: "1px" }}>{t.prefijo}</div>
-                    <div style={{ fontWeight: "900", fontSize: "20px", letterSpacing: "1px" }}>{t.sufijo}</div>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontWeight: "900", fontSize: "16px", letterSpacing: "0.5px" }}>{t.codigo}</div>
                   </div>
                 </div>
-                <div style={{ fontSize: "8px", fontWeight: "bold", display: "flex", justifyContent: "space-between", borderTop: "1px solid #000", paddingTop: "2px" }}>
-                  <span>{empresaActiva.fundo.substring(0,15)}</span><span>RUT:{empresaActiva.rut}</span>
+
+                <div style={{ fontSize: "9px", fontWeight: "bold", display: "flex", justifyContent: "space-between", borderTop: "2px solid #000", paddingTop: "3px", marginTop: "3px" }}>
+                  <span>{empresaActiva.fundo.substring(0,20)}</span><span>RUT: {empresaActiva.rut}</span>
                 </div>
+
               </div>
             ))}
           </div>
