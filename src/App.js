@@ -71,7 +71,7 @@ const EMPTY_CONTRACTOR_FORM = {
   rut: "", nombre: "", contacto: "", estado: "Activo",
 };
 
-// ─── Componente QR Canvas ───────────────────────────────
+// ─── Componente QR Canvas (Para Personal) ───────────────
 function QRCard({ worker, logoUrl, onClose }) {
   const canvasRef = useRef(null);
 
@@ -186,7 +186,172 @@ function QRCard({ worker, logoUrl, onClose }) {
   );
 }
 
-// ─── Administrador de Credenciales (Carga Masiva) ───────
+// ─── MÓDULO: Tarjas de Cosecha (Zebra ZT230 - 100x70mm) ─
+function TarjasManager() {
+  const [empresa, setEmpresa] = useState("AGRICOLA CONVENTO VIEJO SPA");
+  const [fundo, setFundo] = useState("FUNDO CONVENTO VIEJO");
+  const [rut, setRut] = useState("76.843.510-2");
+  const [prefijo, setPrefijo] = useState("AAON");
+  const [inicio, setInicio] = useState(0);
+  const [cantidad, setCantidad] = useState(10);
+  const [tarjas, setTarjas] = useState([]);
+  const [generando, setGenerando] = useState(false);
+
+  const generarTarjas = async () => {
+    setGenerando(true);
+    const nuevasTarjas = [];
+    const today = new Date();
+    const fechaStr = `${String(today.getDate()).padStart(2, '0')}-${String(today.getMonth() + 1).padStart(2, '0')}-${today.getFullYear()}`;
+
+    for (let i = 0; i < cantidad; i++) {
+      const numActual = parseInt(inicio) + i;
+      const numStr = String(numActual).padStart(4, '0');
+      const sufijo = `+ ${numStr}`;
+      const codigoQRData = `bin;${prefijo}+${numStr}`;
+      
+      const qrDataUrl = await QRCode.toDataURL(codigoQRData, {
+        width: 300,
+        margin: 0,
+        color: { dark: "#000000", light: "#ffffff" }
+      });
+
+      nuevasTarjas.push({ id: i, codigo: codigoQRData, prefijo, sufijo, qrUrl: qrDataUrl, fechaStr });
+    }
+    setTarjas(nuevasTarjas);
+    setGenerando(false);
+  };
+
+  const imprimirZebra = () => {
+    if (tarjas.length === 0) return;
+    const win = window.open("", "_blank");
+    
+    // Plantilla de impresión estricta para Zebra (100mm x 70mm)
+    let html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Impresión Zebra - Tarjas</title>
+          <style>
+            @page { size: 100mm 70mm; margin: 0; }
+            @media print {
+              body { margin: 0; padding: 0; background: #fff; }
+              * { -webkit-print-color-adjust: exact !important; color-adjust: exact !important; }
+            }
+            body { font-family: 'Arial', sans-serif; background: #f1f5f9; display: flex; flex-direction: column; align-items: center; padding: 20px;}
+            
+            .label { 
+              width: 100mm; height: 70mm; 
+              background: #fff;
+              page-break-after: always; 
+              color: #000;
+              box-sizing: border-box;
+              padding: 5mm;
+              display: flex;
+              flex-direction: column;
+              justify-content: space-between;
+              margin-bottom: 10px;
+              border: 1px dashed #ccc; /* Guía en pantalla, no afecta impresión */
+            }
+            .label:last-child { page-break-after: auto; margin-bottom: 0; border-bottom: none; }
+            
+            .header { display: flex; justify-content: space-between; font-size: 11px; font-weight: bold; border-bottom: 2px solid #000; padding-bottom: 3px;}
+            .body { display: flex; align-items: center; justify-content: space-between; flex-grow: 1; padding: 2mm 0; }
+            .qr-container { width: 45mm; height: 45mm; display: flex; align-items: center; justify-content: center; }
+            .qr-img { width: 100%; height: 100%; object-fit: contain; }
+            .text-container { display: flex; flex-direction: column; align-items: flex-end; justify-content: center; width: 100%; }
+            .text-prefix { font-size: 34px; font-weight: 900; letter-spacing: 2px; line-height: 1; }
+            .text-suffix { font-size: 44px; font-weight: 900; letter-spacing: 2px; line-height: 1; margin-top: 5px; }
+            .footer { display: flex; justify-content: space-between; font-size: 11px; font-weight: bold; border-top: 2px solid #000; padding-top: 3px;}
+          </style>
+        </head>
+        <body>
+    `;
+    
+    tarjas.forEach(t => {
+      html += `
+        <div class="label">
+          <div class="header">
+            <span>${empresa}</span>
+            <span>${t.fechaStr}</span>
+          </div>
+          <div class="body">
+            <div class="qr-container"><img class="qr-img" src="${t.qrUrl}" alt="QR" /></div>
+            <div class="text-container">
+              <div class="text-prefix">${t.prefijo}</div>
+              <div class="text-suffix">${t.sufijo}</div>
+            </div>
+          </div>
+          <div class="footer">
+            <span>${fundo}</span>
+            <span>RUT: ${rut}</span>
+          </div>
+        </div>
+      `;
+    });
+
+    html += `</body></html>`;
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => { win.print(); }, 500);
+  };
+
+  return (
+    <div className="form-card" style={{ maxWidth: "900px", margin: "0 auto" }}>
+      <h3 className="form-title">Generador de Tarjas de Cosecha (Zebra 100x70mm)</h3>
+      <p style={{ color: "#64748b", fontSize: "14px", marginBottom: "20px" }}>
+        Configura los datos para imprimir las etiquetas. El formato está diseñado exactamente para los rollos de tu Zebra ZT230. Estas etiquetas NO afectan ni modifican las credenciales de tus trabajadores.
+      </p>
+
+      <div className="form-grid" style={{ marginBottom: "20px" }}>
+        <div className="form-group"><label>Empresa</label><input value={empresa} onChange={e => setEmpresa(e.target.value.toUpperCase())} /></div>
+        <div className="form-group"><label>RUT Empresa</label><input value={rut} onChange={e => setRut(e.target.value)} /></div>
+        <div className="form-group"><label>Nombre del Fundo</label><input value={fundo} onChange={e => setFundo(e.target.value.toUpperCase())} /></div>
+        <div className="form-group"><label>Prefijo Código</label><input value={prefijo} onChange={e => setPrefijo(e.target.value.toUpperCase())} placeholder="Ej: AAON" /></div>
+        <div className="form-group"><label>Número Inicial</label><input type="number" min="0" value={inicio} onChange={e => setInicio(e.target.value)} /></div>
+        <div className="form-group"><label>Cantidad a Imprimir</label><input type="number" min="1" max="500" value={cantidad} onChange={e => setCantidad(e.target.value)} /></div>
+      </div>
+
+      <div className="form-actions" style={{ justifyContent: "flex-start", borderBottom: "1px solid #e2e8f0", paddingBottom: "20px", marginBottom: "20px" }}>
+        <button className="btn-primary" onClick={generarTarjas} disabled={generando}>
+          {generando ? "Generando Códigos..." : "⚙️ Generar Lote de Tarjas"}
+        </button>
+        {tarjas.length > 0 && (
+          <button className="btn-primary" onClick={imprimirZebra} style={{ background: "#16a34a" }}>
+            🖨️ Enviar a Impresora Zebra
+          </button>
+        )}
+      </div>
+
+      {tarjas.length > 0 && (
+        <div>
+          <h4 style={{ marginBottom: "15px", color: "#1e293b" }}>Vista Previa ({tarjas.length} etiquetas generadas)</h4>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "15px", maxHeight: "400px", overflowY: "auto", background: "#f8fafc", padding: "15px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+            {tarjas.map(t => (
+              <div key={t.id} style={{ background: "#fff", padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e1", width: "260px", display: "flex", flexDirection: "column" }}>
+                <div style={{ fontSize: "8px", fontWeight: "bold", display: "flex", justifyContent: "space-between", borderBottom: "1px solid #000", paddingBottom: "2px" }}>
+                  <span>{empresa}</span><span>{t.fechaStr}</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0" }}>
+                  <img src={t.qrUrl} alt="QR" style={{ width: "80px", height: "80px" }} />
+                  <div style={{ textAlign: "right", color: "#000" }}>
+                    <div style={{ fontWeight: "900", fontSize: "16px", letterSpacing: "1px" }}>{t.prefijo}</div>
+                    <div style={{ fontWeight: "900", fontSize: "22px", letterSpacing: "1px" }}>{t.sufijo}</div>
+                  </div>
+                </div>
+                <div style={{ fontSize: "8px", fontWeight: "bold", display: "flex", justifyContent: "space-between", borderTop: "1px solid #000", paddingTop: "2px" }}>
+                  <span>{fundo}</span><span>RUT: {rut}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Administrador de Credenciales (Para Trabajadores) ──
 function CredentialsManager({ credentialsList, onBulkUpload, onDelete, loading }) {
   const [bulkText, setBulkText] = useState("");
 
@@ -352,12 +517,8 @@ function WorkerForm({ onSave, onCancel, initial, contractorsList, credentialsLis
             autoComplete="off"
           />
           <datalist id="lista-contratistas">
-            {/* Aquí agregamos el contacto a la lista para buscarlo fácil */}
             {contractorsList.filter(c => c.estado === "Activo").map((c) => (
-              <option 
-                key={c.id} 
-                value={`${c.nombre}${c.contacto ? ` - Contacto: ${c.contacto}` : ""}`} 
-              />
+              <option key={c.id} value={`${c.nombre}${c.contacto ? ` - Contacto: ${c.contacto}` : ""}`} />
             ))}
           </datalist>
         </div>
@@ -494,9 +655,7 @@ export default function App() {
       });
       await batch.commit();
       await loadData();
-    } catch (error) {
-      alert("Error al cargar códigos: " + error.message);
-    }
+    } catch (error) { alert("Error al cargar códigos: " + error.message); }
     setLoadingData(false);
   };
 
@@ -544,7 +703,6 @@ export default function App() {
         finalForm.codigoQR = null;
         finalForm.folioQR = null;
       }
-      
       else if (form.estado === "Activo" && editTarget.estado === "Inactivo" && !editTarget.codigoQR) {
         const today = new Date();
         finalForm.fechaIngreso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
@@ -588,20 +746,16 @@ export default function App() {
 
   const handleToggleEstado = async (item, collectionName) => {
     const nuevoEstado = item.estado === "Activo" ? "Inactivo" : "Activo";
-    
     setLoadingData(true);
     try {
       if (collectionName === "workers") {
-        
         if (nuevoEstado === "Activo") {
           if (!window.confirm(`¿Seguro que deseas Reactivar a ${item.nombre}? Su fecha de ingreso se actualizará a hoy y se le asignará una nueva credencial si no tiene una.`)) {
-            setLoadingData(false);
-            return;
+            setLoadingData(false); return;
           }
 
           const today = new Date();
           const fechaHoy = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-          
           let updates = { estado: nuevoEstado, fechaIngreso: fechaHoy, actualizadoEn: serverTimestamp() };
 
           if (!item.codigoQR) {
@@ -620,11 +774,9 @@ export default function App() {
             }
           }
           await updateDoc(doc(db, collectionName, item.id), updates);
-        } 
-        else {
+        } else {
           if (!window.confirm(`¿Seguro que deseas Desactivar a ${item.nombre}? Su credencial quedará libre automáticamente para otro uso.`)) {
-            setLoadingData(false);
-            return;
+            setLoadingData(false); return;
           }
 
           if (item.codigoQR) {
@@ -632,30 +784,16 @@ export default function App() {
             if (credDoc) {
               await updateDoc(doc(db, "credentials", credDoc.id), { estado: "Disponible", asignadoA: null, actualizadoEn: serverTimestamp() });
             } else {
-              await addDoc(collection(db, "credentials"), { 
-                folio: item.folioQR || "RECICLADO-" + Math.floor(Math.random() * 1000), 
-                codigo: item.codigoQR, 
-                estado: "Disponible", 
-                asignadoA: null, 
-                creadoEn: serverTimestamp() 
-              });
+              await addDoc(collection(db, "credentials"), { folio: item.folioQR || "RECICLADO-" + Math.floor(Math.random() * 1000), codigo: item.codigoQR, estado: "Disponible", asignadoA: null, creadoEn: serverTimestamp() });
             }
           }
 
-          await updateDoc(doc(db, collectionName, item.id), { 
-            estado: nuevoEstado, 
-            codigoQR: null, 
-            folioQR: null, 
-            actualizadoEn: serverTimestamp() 
-          });
+          await updateDoc(doc(db, collectionName, item.id), { estado: nuevoEstado, codigoQR: null, folioQR: null, actualizadoEn: serverTimestamp() });
         }
-
       } else {
         await updateDoc(doc(db, collectionName, item.id), { estado: nuevoEstado, actualizadoEn: serverTimestamp() });
       }
-    } catch (e) {
-      alert("Hubo un error al cambiar el estado: " + e.message);
-    }
+    } catch (e) { alert("Hubo un error al cambiar el estado: " + e.message); }
 
     await loadData();
     setLoadingData(false);
@@ -696,14 +834,16 @@ export default function App() {
       <main className="main-content" style={{ padding: "20px" }}>
         
         <div className="view-tabs" style={{ display: "flex", gap: "10px", marginBottom: "25px", borderBottom: "2px solid #e2e8f0", paddingBottom: "12px", flexWrap: "wrap" }}>
-          <button onClick={() => { setView("workers_list"); setSearch(""); setEditTarget(null); }} style={{ padding: "10px 20px", border: "none", borderRadius: "6px", backgroundColor: view.includes("workers") ? "#101c38" : "#f1f5f9", color: view.includes("workers") ? "#ffffff" : "#475569", cursor: "pointer", fontWeight: "600", fontSize: "14px", transition: "all 0.2s" }}>👥 Personal / Trabajadores</button>
-          <button onClick={() => { setView("contractors_list"); setSearch(""); setEditTarget(null); }} style={{ padding: "10px 20px", border: "none", borderRadius: "6px", backgroundColor: view.includes("contractors") ? "#101c38" : "#f1f5f9", color: view.includes("contractors") ? "#ffffff" : "#475569", cursor: "pointer", fontWeight: "600", fontSize: "14px", transition: "all 0.2s" }}>🏢 Empresas Contratistas</button>
-          <button onClick={() => { setView("credentials_list"); setSearch(""); setEditTarget(null); }} style={{ padding: "10px 20px", border: "none", borderRadius: "6px", backgroundColor: view === "credentials_list" ? "#101c38" : "#f1f5f9", color: view === "credentials_list" ? "#ffffff" : "#475569", cursor: "pointer", fontWeight: "600", fontSize: "14px", transition: "all 0.2s" }}>🪪 Gestión de Credenciales</button>
+          <button onClick={() => { setView("workers_list"); setSearch(""); setEditTarget(null); }} style={{ padding: "10px 20px", border: "none", borderRadius: "6px", backgroundColor: view.includes("workers") ? "#101c38" : "#f1f5f9", color: view.includes("workers") ? "#ffffff" : "#475569", cursor: "pointer", fontWeight: "600", fontSize: "14px", transition: "all 0.2s" }}>👥 Personal</button>
+          <button onClick={() => { setView("contractors_list"); setSearch(""); setEditTarget(null); }} style={{ padding: "10px 20px", border: "none", borderRadius: "6px", backgroundColor: view.includes("contractors") ? "#101c38" : "#f1f5f9", color: view.includes("contractors") ? "#ffffff" : "#475569", cursor: "pointer", fontWeight: "600", fontSize: "14px", transition: "all 0.2s" }}>🏢 Contratistas</button>
+          <button onClick={() => { setView("credentials_list"); setSearch(""); setEditTarget(null); }} style={{ padding: "10px 20px", border: "none", borderRadius: "6px", backgroundColor: view === "credentials_list" ? "#101c38" : "#f1f5f9", color: view === "credentials_list" ? "#ffffff" : "#475569", cursor: "pointer", fontWeight: "600", fontSize: "14px", transition: "all 0.2s" }}>🪪 Gestión Credenciales</button>
+          <button onClick={() => { setView("tarjas"); setSearch(""); setEditTarget(null); }} style={{ padding: "10px 20px", border: "none", borderRadius: "6px", backgroundColor: view === "tarjas" ? "#16a34a" : "#f1f5f9", color: view === "tarjas" ? "#ffffff" : "#475569", cursor: "pointer", fontWeight: "600", fontSize: "14px", transition: "all 0.2s" }}>🏷️ Tarjas de Cosecha</button>
         </div>
 
         {view === "workers_form" && <WorkerForm onSave={handleSaveWorker} onCancel={() => { setView("workers_list"); setEditTarget(null); }} initial={editTarget} contractorsList={contractors} credentialsList={credentials} />}
         {view === "contractors_form" && <ContractorForm onSave={handleSaveContractor} onCancel={() => { setView("contractors_list"); setEditTarget(null); }} initial={editTarget} />}
         {view === "credentials_list" && <CredentialsManager credentialsList={credentials} onBulkUpload={handleBulkUploadCredentials} onDelete={handleDeleteCredential} loading={loadingData} />}
+        {view === "tarjas" && <TarjasManager />}
 
         {(view === "workers_list" || view === "contractors_list") && (
           <>
