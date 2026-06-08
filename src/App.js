@@ -343,17 +343,21 @@ function WorkerForm({ onSave, onCancel, initial, contractorsList, credentialsLis
         <div className="form-group"><label>Apellido *</label><input value={form.apellido} onChange={(e) => set("apellido", e.target.value)} placeholder="Apellido" /></div>
         
         <div className="form-group">
-          <label>Contratista</label>
+          <label>Contratista (Empresa o Contacto)</label>
           <input 
             list="lista-contratistas" 
             value={form.contratista} 
             onChange={(e) => set("contratista", e.target.value)} 
-            placeholder="Escribe para buscar..."
+            placeholder="Escribe el nombre o contacto..."
             autoComplete="off"
           />
           <datalist id="lista-contratistas">
+            {/* Aquí agregamos el contacto a la lista para buscarlo fácil */}
             {contractorsList.filter(c => c.estado === "Activo").map((c) => (
-              <option key={c.id} value={c.nombre} />
+              <option 
+                key={c.id} 
+                value={`${c.nombre}${c.contacto ? ` - Contacto: ${c.contacto}` : ""}`} 
+              />
             ))}
           </datalist>
         </div>
@@ -368,7 +372,7 @@ function WorkerForm({ onSave, onCancel, initial, contractorsList, credentialsLis
           
           {initial ? (
             <p style={{ margin: 0, fontSize: "14px", color: "#475569" }}>
-              ✅ Este trabajador ya tiene asignado un Folio y QR. (Si cambias el estado a Inactivo desde la tabla, la credencial se liberará automáticamente).
+              ✅ Este perfil ya tiene su QR guardado. (Si el estado cambia a Inactivo, la credencial se liberará automáticamente).
             </p>
           ) : (
             <p style={{ margin: 0, fontSize: "14px", color: availableCount > 0 ? "#166534" : "#dc2626" }}>
@@ -510,40 +514,57 @@ export default function App() {
     if (!editTarget && !snap.empty) throw new Error("El RUT ya está registrado.");
     if (editTarget && snap.docs.find(doc => doc.id !== editTarget.id)) throw new Error("El RUT pertenece a otro trabajador.");
 
+    let finalForm = { ...form };
+
     if (!editTarget) {
       const availableCredentials = credentials
         .filter(c => c.estado === "Disponible")
         .sort((a, b) => String(a.folio).localeCompare(String(b.folio), undefined, { numeric: true, sensitivity: 'base' }));
 
-      let codigoQR, folioQR;
-
       if (availableCredentials.length > 0) {
         const nextCred = availableCredentials[0];
-        codigoQR = nextCred.codigo;
-        folioQR = nextCred.folio;
-        await updateDoc(doc(db, "credentials", nextCred.id), { 
-          estado: "Asignado", 
-          asignadoA: form.rut, 
-          actualizadoEn: serverTimestamp() 
-        });
+        finalForm.codigoQR = nextCred.codigo;
+        finalForm.folioQR = nextCred.folio;
+        await updateDoc(doc(db, "credentials", nextCred.id), { estado: "Asignado", asignadoA: form.rut, actualizadoEn: serverTimestamp() });
       } else {
-        codigoQR = generateWorkerCode();
-        folioQR = "V-AUTO-" + Math.floor(Math.random() * 10000);
+        finalForm.codigoQR = generateWorkerCode();
+        finalForm.folioQR = "V-AUTO-" + Math.floor(Math.random() * 10000);
       }
 
-      await addDoc(collection(db, "workers"), { 
-        ...form, 
-        codigoQR, 
-        folioQR, 
-        creadoEn: serverTimestamp(), 
-        actualizadoEn: serverTimestamp() 
-      });
+      await addDoc(collection(db, "workers"), { ...finalForm, creadoEn: serverTimestamp(), actualizadoEn: serverTimestamp() });
 
     } else {
-      await updateDoc(doc(db, "workers", editTarget.id), { 
-        ...form, 
-        actualizadoEn: serverTimestamp() 
-      });
+      if (form.estado === "Inactivo" && editTarget.codigoQR) {
+        const credDoc = credentials.find(c => c.codigo === editTarget.codigoQR);
+        if (credDoc) {
+          await updateDoc(doc(db, "credentials", credDoc.id), { estado: "Disponible", asignadoA: null, actualizadoEn: serverTimestamp() });
+        } else {
+          await addDoc(collection(db, "credentials"), { folio: editTarget.folioQR || "RECICLADO-" + Math.floor(Math.random() * 1000), codigo: editTarget.codigoQR, estado: "Disponible", asignadoA: null, creadoEn: serverTimestamp() });
+        }
+        finalForm.codigoQR = null;
+        finalForm.folioQR = null;
+      }
+      
+      else if (form.estado === "Activo" && editTarget.estado === "Inactivo" && !editTarget.codigoQR) {
+        const today = new Date();
+        finalForm.fechaIngreso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+        const availableCredentials = credentials
+          .filter(c => c.estado === "Disponible")
+          .sort((a, b) => String(a.folio).localeCompare(String(b.folio), undefined, { numeric: true, sensitivity: 'base' }));
+
+        if (availableCredentials.length > 0) {
+          const nextCred = availableCredentials[0];
+          finalForm.codigoQR = nextCred.codigo;
+          finalForm.folioQR = nextCred.folio;
+          await updateDoc(doc(db, "credentials", nextCred.id), { estado: "Asignado", asignadoA: form.rut, actualizadoEn: serverTimestamp() });
+        } else {
+          finalForm.codigoQR = generateWorkerCode();
+          finalForm.folioQR = "V-AUTO-" + Math.floor(Math.random() * 10000);
+        }
+      }
+
+      await updateDoc(doc(db, "workers", editTarget.id), { ...finalForm, actualizadoEn: serverTimestamp() });
     }
 
     await loadData(); 
@@ -565,7 +586,6 @@ export default function App() {
     await loadData(); setView("contractors_list"); setEditTarget(null);
   };
 
-  // ── LÓGICA DE BOTÓN DE ESTADO UNIFICADO CON ASIGNACIÓN/LIBERACIÓN ──
   const handleToggleEstado = async (item, collectionName) => {
     const nuevoEstado = item.estado === "Activo" ? "Inactivo" : "Activo";
     
@@ -573,7 +593,6 @@ export default function App() {
     try {
       if (collectionName === "workers") {
         
-        // ACCIÓN: REACTIVAR TRABAJADOR
         if (nuevoEstado === "Activo") {
           if (!window.confirm(`¿Seguro que deseas Reactivar a ${item.nombre}? Su fecha de ingreso se actualizará a hoy y se le asignará una nueva credencial si no tiene una.`)) {
             setLoadingData(false);
@@ -585,7 +604,6 @@ export default function App() {
           
           let updates = { estado: nuevoEstado, fechaIngreso: fechaHoy, actualizadoEn: serverTimestamp() };
 
-          // Le asignamos credencial solo si no tiene una
           if (!item.codigoQR) {
             const availableCredentials = credentials
               .filter(c => c.estado === "Disponible")
@@ -595,22 +613,16 @@ export default function App() {
               const nextCred = availableCredentials[0];
               updates.codigoQR = nextCred.codigo;
               updates.folioQR = nextCred.folio;
-              
-              await updateDoc(doc(db, "credentials", nextCred.id), { 
-                estado: "Asignado", asignadoA: item.rut, actualizadoEn: serverTimestamp() 
-              });
+              await updateDoc(doc(db, "credentials", nextCred.id), { estado: "Asignado", asignadoA: item.rut, actualizadoEn: serverTimestamp() });
             } else {
               updates.codigoQR = generateWorkerCode();
               updates.folioQR = "V-AUTO-" + Math.floor(Math.random() * 10000);
             }
           }
-          
           await updateDoc(doc(db, collectionName, item.id), updates);
-
         } 
-        // ACCIÓN: DESACTIVAR TRABAJADOR (LIBERA CREDENCIAL)
         else {
-          if (!window.confirm(`¿Seguro que deseas Desactivar a ${item.nombre}? Su credencial (Folio: ${item.folioQR || "N/A"}) quedará libre automáticamente para otro uso.`)) {
+          if (!window.confirm(`¿Seguro que deseas Desactivar a ${item.nombre}? Su credencial quedará libre automáticamente para otro uso.`)) {
             setLoadingData(false);
             return;
           }
@@ -618,11 +630,8 @@ export default function App() {
           if (item.codigoQR) {
             const credDoc = credentials.find(c => c.codigo === item.codigoQR);
             if (credDoc) {
-              await updateDoc(doc(db, "credentials", credDoc.id), { 
-                estado: "Disponible", asignadoA: null, actualizadoEn: serverTimestamp() 
-              });
+              await updateDoc(doc(db, "credentials", credDoc.id), { estado: "Disponible", asignadoA: null, actualizadoEn: serverTimestamp() });
             } else {
-              // Si no existía en el listado, la guardamos para que se pueda reutilizar
               await addDoc(collection(db, "credentials"), { 
                 folio: item.folioQR || "RECICLADO-" + Math.floor(Math.random() * 1000), 
                 codigo: item.codigoQR, 
@@ -642,11 +651,7 @@ export default function App() {
         }
 
       } else {
-        // Comportamiento normal para contratistas
-        await updateDoc(doc(db, collectionName, item.id), { 
-          estado: nuevoEstado, 
-          actualizadoEn: serverTimestamp() 
-        });
+        await updateDoc(doc(db, collectionName, item.id), { estado: nuevoEstado, actualizadoEn: serverTimestamp() });
       }
     } catch (e) {
       alert("Hubo un error al cambiar el estado: " + e.message);
@@ -691,24 +696,9 @@ export default function App() {
       <main className="main-content" style={{ padding: "20px" }}>
         
         <div className="view-tabs" style={{ display: "flex", gap: "10px", marginBottom: "25px", borderBottom: "2px solid #e2e8f0", paddingBottom: "12px", flexWrap: "wrap" }}>
-          <button 
-            onClick={() => { setView("workers_list"); setSearch(""); setEditTarget(null); }} 
-            style={{ padding: "10px 20px", border: "none", borderRadius: "6px", backgroundColor: view.includes("workers") ? "#101c38" : "#f1f5f9", color: view.includes("workers") ? "#ffffff" : "#475569", cursor: "pointer", fontWeight: "600", fontSize: "14px", transition: "all 0.2s" }}
-          >
-            👥 Personal / Trabajadores
-          </button>
-          <button 
-            onClick={() => { setView("contractors_list"); setSearch(""); setEditTarget(null); }} 
-            style={{ padding: "10px 20px", border: "none", borderRadius: "6px", backgroundColor: view.includes("contractors") ? "#101c38" : "#f1f5f9", color: view.includes("contractors") ? "#ffffff" : "#475569", cursor: "pointer", fontWeight: "600", fontSize: "14px", transition: "all 0.2s" }}
-          >
-            🏢 Empresas Contratistas
-          </button>
-          <button 
-            onClick={() => { setView("credentials_list"); setSearch(""); setEditTarget(null); }} 
-            style={{ padding: "10px 20px", border: "none", borderRadius: "6px", backgroundColor: view === "credentials_list" ? "#101c38" : "#f1f5f9", color: view === "credentials_list" ? "#ffffff" : "#475569", cursor: "pointer", fontWeight: "600", fontSize: "14px", transition: "all 0.2s" }}
-          >
-            🪪 Gestión de Credenciales
-          </button>
+          <button onClick={() => { setView("workers_list"); setSearch(""); setEditTarget(null); }} style={{ padding: "10px 20px", border: "none", borderRadius: "6px", backgroundColor: view.includes("workers") ? "#101c38" : "#f1f5f9", color: view.includes("workers") ? "#ffffff" : "#475569", cursor: "pointer", fontWeight: "600", fontSize: "14px", transition: "all 0.2s" }}>👥 Personal / Trabajadores</button>
+          <button onClick={() => { setView("contractors_list"); setSearch(""); setEditTarget(null); }} style={{ padding: "10px 20px", border: "none", borderRadius: "6px", backgroundColor: view.includes("contractors") ? "#101c38" : "#f1f5f9", color: view.includes("contractors") ? "#ffffff" : "#475569", cursor: "pointer", fontWeight: "600", fontSize: "14px", transition: "all 0.2s" }}>🏢 Empresas Contratistas</button>
+          <button onClick={() => { setView("credentials_list"); setSearch(""); setEditTarget(null); }} style={{ padding: "10px 20px", border: "none", borderRadius: "6px", backgroundColor: view === "credentials_list" ? "#101c38" : "#f1f5f9", color: view === "credentials_list" ? "#ffffff" : "#475569", cursor: "pointer", fontWeight: "600", fontSize: "14px", transition: "all 0.2s" }}>🪪 Gestión de Credenciales</button>
         </div>
 
         {view === "workers_form" && <WorkerForm onSave={handleSaveWorker} onCancel={() => { setView("workers_list"); setEditTarget(null); }} initial={editTarget} contractorsList={contractors} credentialsList={credentials} />}
@@ -732,10 +722,7 @@ export default function App() {
               <select className="filter-select" value={filterEstado} onChange={(e) => setFilterEstado(e.target.value)}>
                 <option value="Todos">Todos</option><option value="Activo">Activos</option><option value="Inactivo">Inactivos</option>
               </select>
-
-              <button className="btn-primary" onClick={() => { setEditTarget(null); setView(isWorkerView ? "workers_form" : "contractors_form"); }}>
-                + Nuevo {isWorkerView ? "Trabajador" : "Contratista"}
-              </button>
+              <button className="btn-primary" onClick={() => { setEditTarget(null); setView(isWorkerView ? "workers_form" : "contractors_form"); }}>+ Nuevo {isWorkerView ? "Trabajador" : "Contratista"}</button>
             </div>
 
             {loadingData ? (
@@ -761,12 +748,20 @@ export default function App() {
                         <td className="cell-mono">{formatRut(item.rut)}</td>
                         <td className="cell-name">{item.nombre} {isWorkerView ? item.apellido : ""}</td>
                         <td>{isWorkerView ? (item.contratista || "—") : (item.contacto || "—")}</td>
-                        {isWorkerView && <td className="cell-mono" style={{color: "#64748b", fontWeight: "600"}}>{item.folioQR || "—"}</td>}
+                        
+                        {isWorkerView && (
+                          <td className="cell-mono" style={{color: "#64748b", fontWeight: "600"}}>
+                            {item.estado === "Inactivo" ? "—" : (item.folioQR || "—")}
+                          </td>
+                        )}
+
                         <td><span className={`badge ${item.estado === "Activo" ? "badge-activo" : "badge-inactivo"}`}>{item.estado}</span></td>
                         <td className="cell-actions">
-                          {isWorkerView && item.codigoQR && (
+                          
+                          {isWorkerView && item.codigoQR && item.estado === "Activo" && (
                             <button className="btn-action" title="Ver QR" onClick={() => setQrWorker(item)}>QR</button>
                           )}
+
                           <button className="btn-action" title="Editar" onClick={() => { setEditTarget(item); setView(isWorkerView ? "workers_form" : "contractors_form"); }}>✏️</button>
                           <button className={`btn-action ${item.estado === "Activo" ? "btn-action-warn" : "btn-action-ok"}`} onClick={() => handleToggleEstado(item, isWorkerView ? "workers" : "contractors")}>
                             {item.estado === "Activo" ? "🔴" : "🟢"}
