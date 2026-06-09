@@ -203,6 +203,8 @@ function TarjasManager() {
   const [historial, setHistorial] = useState([]);
   const [inicio, setInicio] = useState(1);
   const [ultimoCodigo, setUltimoCodigo] = useState("Cargando...");
+  
+  const [tarjas, setTarjas] = useState([]);
   const [procesando, setProcesando] = useState(false);
   const prefijo = "AAON"; // FIJO, no modificable
 
@@ -223,7 +225,7 @@ function TarjasManager() {
       setInicio(maxFin + 1);
       
       if (maxFin > 0) {
-        setUltimoCodigo(`${prefijo}${String(maxFin).padStart(4, '0')}`);
+        setUltimoCodigo(`bin;${prefijo}${String(maxFin).padStart(4, '0')}`);
       } else {
         setUltimoCodigo("Ninguno");
       }
@@ -238,39 +240,62 @@ function TarjasManager() {
     cargarHistorial();
   }, [cargarHistorial]);
 
-  const registrarEImprimirZebra = async () => {
+  // Genera las tarjas SOLAMENTE para previsualizar en pantalla
+  const generarPrevisualizacion = async () => {
     if (!cuartel || !corte) {
-      alert("Por favor, ingresa el Cuartel y el Corte antes de generar las tarjas.");
+      alert("Por favor, ingresa el Cuartel y el Corte antes de previsualizar.");
       return;
     }
-    if (cantidad < 1) {
-      alert("La cantidad a imprimir debe ser al menos 1.");
-      return;
-    }
-
-    setProcesando(true);
-    const tarjas = [];
-    const numFin = inicio + parseInt(cantidad) - 1;
-    
-    // Formatear fecha para impresión (DD-MM-YYYY)
+    const nuevasTarjas = [];
     const [y, m, d] = fecha.split("-");
     const fechaStr = `${d}-${m}-${y}`;
 
-    // 1. Generar los QRs
     for (let i = 0; i < cantidad; i++) {
       const numActual = inicio + i;
       const numStr = String(numActual).padStart(4, '0');
-      
       const codigoQRData = `bin;${prefijo}${numStr}`;
       
       const qrDataUrl = await QRCode.toDataURL(codigoQRData, {
         width: 300, margin: 0, color: { dark: "#000000", light: "#ffffff" }
       });
 
-      tarjas.push({ codigo: codigoQRData, prefijo, sufijo: numStr, qrUrl: qrDataUrl, fechaStr, cuartel, corte });
+      nuevasTarjas.push({ codigo: codigoQRData, qrUrl: qrDataUrl, fechaStr, cuartel, corte });
+    }
+    setTarjas(nuevasTarjas);
+  };
+
+  // Función crítica: Guarda en Firebase y manda a imprimir
+  const registrarEImprimirZebra = async () => {
+    if (tarjas.length === 0) {
+      alert("Primero debes previsualizar el lote generado.");
+      return;
     }
 
-    // 2. Imprimir (ESTILOS ZEBRA STRICT)
+    setProcesando(true);
+    const numFin = inicio + parseInt(cantidad) - 1;
+
+    // 1. Guardar en Base de Datos (Auditoría e Historial)
+    try {
+      await addDoc(collection(db, "tarjas_history"), {
+        empresa: empresaActiva.nombre,
+        fundo: empresaActiva.fundo,
+        fechaCosecha: fecha,
+        cuartel: cuartel.toUpperCase(),
+        corte: corte.toUpperCase(),
+        prefijo: prefijo,
+        inicio: inicio,
+        cantidad: parseInt(cantidad),
+        fin: numFin,
+        creadoEn: serverTimestamp()
+      });
+    } catch(e) {
+      console.error("Error al guardar historial de tarjas", e);
+      alert("Hubo un error al guardar el registro en la nube.");
+      setProcesando(false);
+      return;
+    }
+
+    // 2. Construir la ventana de impresión para la Zebra
     const win = window.open("", "_blank");
     let html = `
       <!DOCTYPE html>
@@ -289,13 +314,6 @@ function TarjasManager() {
               width: 100mm;
             }
 
-            /* Pantalla (Preview) */
-            @media screen {
-              body { background: #f1f5f9; padding: 20px; display: flex; flex-direction: column; align-items: center; width: auto; }
-              .label { margin-bottom: 20px; border: 1px dashed #ccc !important; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-            }
-
-            /* Zebra Print */
             @media print {
               body { display: block; }
               .label { 
@@ -310,24 +328,25 @@ function TarjasManager() {
             .label { 
               width: 100mm; 
               height: 70mm; 
-              padding: 3mm 4mm; /* Margen de seguridad interno */
+              padding: 3mm 4mm; 
               display: flex;
               flex-direction: column;
               justify-content: space-between;
-              overflow: hidden; /* Corta cualquier desborde */
+              overflow: hidden; 
               background: #fff;
+              border: 1px dashed #ccc; /* Visible en pantalla, no en zebra */
             }
             
             .header { display: flex; justify-content: space-between; font-size: 10px; font-weight: bold; border-bottom: 2px solid #000; padding-bottom: 2px; margin-bottom: 2px;}
             .sub-header { display: flex; justify-content: space-between; font-size: 11px; font-weight: bold; border-bottom: 2px solid #000; padding-bottom: 2px; }
             
-            .body { display: flex; align-items: center; justify-content: space-between; flex-grow: 1; padding: 1mm 0;}
-            .qr-container { width: 38mm; height: 38mm; display: flex; align-items: center; justify-content: flex-start; }
+            /* Contenedor central mejorado (QR Grande y texto completo) */
+            .body { display: flex; align-items: center; justify-content: space-between; flex-grow: 1; padding: 2mm 0; height: 50mm;}
+            .qr-container { width: 48mm; height: 48mm; display: flex; align-items: center; justify-content: flex-start; }
             .qr-img { width: 100%; height: 100%; object-fit: contain; }
             
-            .text-container { display: flex; flex-direction: column; align-items: flex-end; justify-content: center; width: 100%; }
-            .text-prefix { font-size: 26px; font-weight: 900; letter-spacing: 1px; line-height: 1; }
-            .text-suffix { font-size: 36px; font-weight: 900; letter-spacing: 1px; line-height: 1; margin-top: 4px; }
+            .text-container { display: flex; align-items: center; justify-content: flex-end; width: 40mm; }
+            .text-code { font-size: 22px; font-weight: 900; letter-spacing: 0px; text-align: right; word-break: break-all; line-height: 1.1;}
             
             .footer { display: flex; justify-content: space-between; font-size: 10px; font-weight: bold; border-top: 2px solid #000; padding-top: 2px; margin-top: 2px;}
           </style>
@@ -351,8 +370,7 @@ function TarjasManager() {
           <div class="body">
             <div class="qr-container"><img class="qr-img" src="${t.qrUrl}" alt="QR" /></div>
             <div class="text-container">
-              <div class="text-prefix">${t.prefijo}</div>
-              <div class="text-suffix">${t.sufijo}</div>
+              <div class="text-code">${t.codigo}</div>
             </div>
           </div>
           <div class="footer">
@@ -368,40 +386,23 @@ function TarjasManager() {
     win.document.close();
     win.focus();
     
-    // 3. Guardar en Base de Datos (Auditoría)
-    try {
-      await addDoc(collection(db, "tarjas_history"), {
-        empresa: empresaActiva.nombre,
-        fundo: empresaActiva.fundo,
-        fechaCosecha: fecha,
-        cuartel: cuartel.toUpperCase(),
-        corte: corte.toUpperCase(),
-        prefijo: prefijo,
-        inicio: inicio,
-        cantidad: parseInt(cantidad),
-        fin: numFin,
-        creadoEn: serverTimestamp()
-      });
-    } catch(e) {
-      console.error("Error al guardar historial de tarjas", e);
-    }
-
-    // 4. Actualizar estado e imprimir
+    // 3. Actualizar estado y limpiar para el siguiente lote
     await cargarHistorial();
+    setTarjas([]); // Ocultamos la preview para que no vuelvan a imprimir lo mismo sin querer
     setProcesando(false);
     
     setTimeout(() => { win.print(); }, 500);
   };
 
   const numFinVista = inicio + parseInt(cantidad || 0) - 1;
-  const siguienteCodigoVista = `${prefijo}${String(inicio).padStart(4, '0')}`;
-  const finVistaCompleto = `${prefijo}${String(numFinVista).padStart(4, '0')}`;
+  const siguienteCodigoVista = `bin;${prefijo}${String(inicio).padStart(4, '0')}`;
+  const finVistaCompleto = `bin;${prefijo}${String(numFinVista).padStart(4, '0')}`;
 
   return (
     <div className="form-card" style={{ maxWidth: "1000px", margin: "0 auto" }}>
       <h3 className="form-title">Generador de Tarjas de Cosecha (Zebra 100x70mm)</h3>
       <p style={{ color: "#64748b", fontSize: "14px", marginBottom: "20px" }}>
-        El número de folio se asigna automáticamente para evitar duplicados. Al imprimir, se generará un registro inmodificable en el historial.
+        El número de folio se asigna automáticamente. Ingresa los datos, previsualiza la etiqueta y luego regístrala para imprimir.
       </p>
 
       <div className="form-grid" style={{ marginBottom: "20px", background: "#f8fafc", padding: "20px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
@@ -426,7 +427,7 @@ function TarjasManager() {
           <input value={ultimoCodigo} disabled style={{ background: "#e2e8f0", color: "#64748b", fontWeight: "bold", cursor: "not-allowed", fontFamily: "monospace" }} />
         </div>
         <div className="form-group">
-          <label>Inicia en (Automático)</label>
+          <label>Siguiente Código Libre</label>
           <input value={siguienteCodigoVista} disabled style={{ background: "#e2e8f0", color: "#0f172a", fontWeight: "bold", cursor: "not-allowed", fontFamily: "monospace" }} />
         </div>
         <div className="form-group">
@@ -435,19 +436,59 @@ function TarjasManager() {
         </div>
         
         <div style={{ gridColumn: "1 / -1", textAlign: "center", marginTop: "10px", color: "#16a34a", fontWeight: "bold" }}>
-          ℹ️ Se imprimirán {cantidad || 0} etiquetas: Desde <span style={{fontFamily:"monospace", background:"#dcfce7", padding:"2px 6px", borderRadius:"4px"}}>{siguienteCodigoVista}</span> hasta <span style={{fontFamily:"monospace", background:"#dcfce7", padding:"2px 6px", borderRadius:"4px"}}>{finVistaCompleto}</span>
+          ℹ️ Generarás {cantidad || 0} etiquetas: Desde <span style={{fontFamily:"monospace", background:"#dcfce7", padding:"2px 6px", borderRadius:"4px"}}>{siguienteCodigoVista}</span> hasta <span style={{fontFamily:"monospace", background:"#dcfce7", padding:"2px 6px", borderRadius:"4px"}}>{finVistaCompleto}</span>
         </div>
       </div>
 
+      {/* BOTONES SECUENCIALES UNIFICADOS */}
       <div className="form-actions" style={{ justifyContent: "center", borderBottom: "1px solid #e2e8f0", paddingBottom: "25px", marginBottom: "25px" }}>
-        <button className="btn-primary" onClick={registrarEImprimirZebra} disabled={procesando} style={{ background: "#16a34a", fontSize: "16px", padding: "12px 30px" }}>
-          {procesando ? "Generando Lote..." : "🖨️ Registrar en Historial e Imprimir Zebra"}
+        <button className="btn-secondary" onClick={generarPrevisualizacion} style={{ fontSize: "16px", padding: "12px 30px" }}>
+          👁️ Previsualizar Lote
         </button>
+        
+        {tarjas.length > 0 && (
+          <button className="btn-primary" onClick={registrarEImprimirZebra} disabled={procesando} style={{ background: "#16a34a", fontSize: "16px", padding: "12px 30px" }}>
+            {procesando ? "Guardando..." : "🖨️ Guardar Historial e Imprimir Zebra"}
+          </button>
+        )}
       </div>
 
-      {/* --- TABLA DE HISTORIAL DE IMPRESIONES --- */}
-      <div>
-        <h4 style={{ marginBottom: "15px", color: "#1e293b" }}>Auditoría: Historial de Impresiones</h4>
+      {/* VISTA PREVIA WEB */}
+      {tarjas.length > 0 && (
+        <div>
+          <h4 style={{ marginBottom: "15px", color: "#1e293b" }}>Vista Previa ({tarjas.length} etiquetas listas para guardar)</h4>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "15px", maxHeight: "400px", overflowY: "auto", background: "#f8fafc", padding: "15px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+            {tarjas.map(t => (
+              <div key={t.codigo} style={{ background: "#fff", padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e1", width: "290px", display: "flex", flexDirection: "column", color: "#000" }}>
+                
+                <div style={{ fontSize: "9px", fontWeight: "bold", display: "flex", justifyContent: "space-between", borderBottom: "2px solid #000", paddingBottom: "3px", marginBottom: "3px" }}>
+                  <span>{empresaActiva.nombre.substring(0,22)}...</span><span>{t.fechaStr}</span>
+                </div>
+                
+                <div style={{ fontSize: "10px", fontWeight: "bold", display: "flex", justifyContent: "space-between", borderBottom: "2px solid #000", paddingBottom: "3px", marginBottom: "3px" }}>
+                  <span>CUARTEL: {t.cuartel}</span><span>CORTE: {t.corte}</span>
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0" }}>
+                  <img src={t.qrUrl} alt="QR" style={{ width: "90px", height: "90px" }} />
+                  <div style={{ textAlign: "right", paddingLeft: "10px" }}>
+                    <div style={{ fontWeight: "900", fontSize: "18px", letterSpacing: "0px", wordBreak: "break-all", lineHeight: "1.2" }}>{t.codigo}</div>
+                  </div>
+                </div>
+
+                <div style={{ fontSize: "9px", fontWeight: "bold", display: "flex", justifyContent: "space-between", borderTop: "2px solid #000", paddingTop: "3px", marginTop: "3px" }}>
+                  <span>{empresaActiva.fundo.substring(0,20)}</span><span>RUT: {empresaActiva.rut}</span>
+                </div>
+
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* TABLA DE HISTORIAL DE IMPRESIONES */}
+      <div style={{ marginTop: "40px" }}>
+        <h4 style={{ marginBottom: "15px", color: "#1e293b" }}>Auditoría: Historial de Impresiones Guardadas</h4>
         {historial.length === 0 ? (
            <div className="empty-state"><p>Aún no se han impreso tarjas.</p></div>
         ) : (
@@ -472,7 +513,7 @@ function TarjasManager() {
                       <div style={{fontSize: "12px", color: "#64748b"}}>Cuartel: {lote.cuartel} | Corte: {lote.corte}</div>
                     </td>
                     <td className="cell-mono" style={{fontWeight: "600"}}>
-                      {lote.prefijo}{String(lote.inicio).padStart(4, '0')} - {lote.prefijo}{String(lote.fin).padStart(4, '0')}
+                      bin;{lote.prefijo}{String(lote.inicio).padStart(4, '0')} - bin;{lote.prefijo}{String(lote.fin).padStart(4, '0')}
                     </td>
                     <td style={{textAlign: "center", fontWeight: "bold", color: "#16a34a"}}>{lote.cantidad}</td>
                   </tr>
