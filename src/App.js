@@ -202,8 +202,9 @@ function TarjasManager() {
   // Historial y correlativo
   const [historial, setHistorial] = useState([]);
   const [inicio, setInicio] = useState(1);
+  const [ultimoCodigo, setUltimoCodigo] = useState("Cargando...");
   const [procesando, setProcesando] = useState(false);
-  const prefijo = "AAON"; // FIJO, no modificable
+  const prefijo = "bin;AAON0001"; // FIJO, no modificable
 
   const empresaActiva = EMPRESAS_TARJAS[empresaIdx];
 
@@ -214,14 +215,22 @@ function TarjasManager() {
       const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       setHistorial(docs);
 
-      // Calcular el siguiente número disponible buscando el 'fin' más alto
       let maxFin = 0;
       docs.forEach(d => {
         if (d.fin && d.fin > maxFin) maxFin = d.fin;
       });
+      
       setInicio(maxFin + 1);
+      
+      if (maxFin > 0) {
+        setUltimoCodigo(`${prefijo}${String(maxFin).padStart(4, '0')}`);
+      } else {
+        setUltimoCodigo("Ninguno");
+      }
+      
     } catch (e) {
       console.error("Error al cargar historial de tarjas:", e);
+      setUltimoCodigo("Error al cargar");
     }
   }, []);
 
@@ -365,6 +374,8 @@ function TarjasManager() {
   };
 
   const numFinVista = inicio + parseInt(cantidad || 0) - 1;
+  const siguienteCodigoVista = `${prefijo}${String(inicio).padStart(4, '0')}`;
+  const finVistaCompleto = `${prefijo}${String(numFinVista).padStart(4, '0')}`;
 
   return (
     <div className="form-card" style={{ maxWidth: "1000px", margin: "0 auto" }}>
@@ -391,20 +402,20 @@ function TarjasManager() {
         
         {/* PARTE 2: DATOS BLOQUEADOS (Correlativo) */}
         <div className="form-group">
-          <label>Prefijo (Fijo)</label>
-          <input value={prefijo} disabled style={{ background: "#e2e8f0", color: "#64748b", fontWeight: "bold", cursor: "not-allowed" }} />
+          <label>Último Código Impreso</label>
+          <input value={ultimoCodigo} disabled style={{ background: "#e2e8f0", color: "#64748b", fontWeight: "bold", cursor: "not-allowed", fontFamily: "monospace" }} />
         </div>
         <div className="form-group">
           <label>Inicia en (Automático)</label>
-          <input value={inicio} disabled style={{ background: "#e2e8f0", color: "#64748b", fontWeight: "bold", cursor: "not-allowed" }} />
+          <input value={siguienteCodigoVista} disabled style={{ background: "#e2e8f0", color: "#0f172a", fontWeight: "bold", cursor: "not-allowed", fontFamily: "monospace" }} />
         </div>
         <div className="form-group">
           <label>Cantidad a Imprimir *</label>
-          <input type="number" min="1" max="1000" value={cantidad} onChange={e => setCantidad(e.target.value)} style={{ borderColor: "#16a34a", borderWidth: "2px" }} />
+          <input type="number" min="1" max="1000" value={cantidad} onChange={e => setCantidad(e.target.value)} style={{ borderColor: "#16a34a", borderWidth: "2px", fontWeight: "bold" }} />
         </div>
         
         <div style={{ gridColumn: "1 / -1", textAlign: "center", marginTop: "10px", color: "#16a34a", fontWeight: "bold" }}>
-          ℹ️ Se imprimirán {cantidad || 0} etiquetas: Desde <span style={{fontFamily:"monospace"}}>{prefijo}{String(inicio).padStart(4, '0')}</span> hasta <span style={{fontFamily:"monospace"}}>{prefijo}{String(numFinVista).padStart(4, '0')}</span>
+          ℹ️ Se imprimirán {cantidad || 0} etiquetas: Desde <span style={{fontFamily:"monospace", background:"#dcfce7", padding:"2px 6px", borderRadius:"4px"}}>{siguienteCodigoVista}</span> hasta <span style={{fontFamily:"monospace", background:"#dcfce7", padding:"2px 6px", borderRadius:"4px"}}>{finVistaCompleto}</span>
         </div>
       </div>
 
