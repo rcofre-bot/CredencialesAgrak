@@ -691,3 +691,105 @@ body {
   .user-name { display: none; }
   .main-content { padding: 1rem; }
 }
+
+/* ==========================================================================
+   DISEÑO RESPONSIVE (MÓVILES Y TABLETS)
+   ========================================================================== */
+
+@media screen and (max-width: 768px) {
+  /* 1. Ajuste del menú superior (TopBar) */
+  .topbar {
+    flex-direction: column;
+    gap: 12px;
+    padding: 15px;
+    text-align: center;
+  }
+  .topbar-user {
+    width: 100%;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  /* 2. Pestañas de Navegación (Tabs) apiladas */
+  .view-tabs {
+    flex-direction: column;
+    gap: 8px !important;
+  }
+  .view-tabs button {
+    width: 100%;
+    text-align: center;
+    padding: 12px !important;
+  }
+
+  /* 3. Tarjetas de Estadísticas apiladas */
+  .stats-row {
+    flex-direction: column;
+    gap: 10px;
+  }
+  .stat-card {
+    width: 100%;
+  }
+
+  /* 4. Barra de Herramientas (Buscador y Botón Nuevo) */
+  .toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .search-input, 
+  .filter-select, 
+  .btn-primary, 
+  .btn-secondary {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  /* 5. Formularios a 1 sola columna */
+  .form-grid {
+    grid-template-columns: 1fr !important;
+    gap: 15px;
+  }
+  .form-actions {
+    flex-direction: column-reverse; /* El botón principal queda arriba en móviles */
+    gap: 10px;
+  }
+
+  /* 6. Tablas con Scroll Horizontal (Evita que se rompan) */
+  .table-wrap {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch; /* Scroll suave en iPhone */
+    border-radius: 8px;
+    box-shadow: inset 0 0 5px rgba(0,0,0,0.05);
+  }
+  .workers-table {
+    min-width: 700px; /* Obliga a la tabla a mantener su ancho y activa el scroll */
+  }
+
+  /* 7. Modal del Código QR */
+  .modal-box {
+    width: 95%;
+    padding: 15px;
+  }
+  .card-preview {
+    transform: scale(0.9); /* Achica un poco la credencial para que quepa en pantallas chicas */
+    transform-origin: top center;
+    margin-bottom: -20px;
+  }
+
+  /* 8. Contenedor principal de la app */
+  .main-content {
+    padding: 10px !important;
+  }
+}
+
+/* Ajuste extra para teléfonos muy pequeños (iPhone SE, etc) */
+@media screen and (max-width: 480px) {
+  .login-card {
+    width: 90%;
+    padding: 20px;
+  }
+  .login-title {
+    font-size: 24px;
+  }
+}

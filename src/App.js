@@ -188,71 +188,58 @@ function QRCard({ worker, logoUrl, onClose }) {
   );
 }
 
-// ─── NUEVO: MÓDULO MANTENEDOR DE CAMPOS Y CENTROS DE COSTO ───
-function CamposManager({ camposList, onAdd, onBulkUpload, onDelete, loading }) {
+// ─── NUEVO: MÓDULO MANTENEDOR DE CAMPOS Y CENTROS DE COSTO (SIN CARGA MASIVA, CON EDICIÓN) ───
+function CamposManager({ camposList, onSave, onDelete, loading }) {
   const [campo, setCampo] = useState("");
   const [centro, setCentro] = useState("");
   const [descripcion, setDescripcion] = useState("");
-  const [bulkText, setBulkText] = useState("");
+  const [editId, setEditId] = useState(null);
 
-  const handleAdd = () => {
+  const handleSaveClick = () => {
     if (!campo.trim() || !centro.trim()) {
       alert("Debes ingresar el nombre del Campo y el Centro de Costo.");
       return;
     }
-    onAdd({ 
+    
+    // Llamamos a la función de guardado/actualización
+    onSave({ 
       campo: campo.toUpperCase().trim(), 
       centro: centro.toUpperCase().trim(),
       descripcion: descripcion.trim()
-    });
+    }, editId);
+    
+    // Limpiamos el formulario
+    setCampo("");
     setCentro(""); 
     setDescripcion("");
+    setEditId(null);
   };
 
-  const handleFileUpload = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => setBulkText(ev.target.result);
-    reader.readAsText(file);
-    e.target.value = "";
+  const handleEditClick = (item) => {
+    setCampo(item.campo);
+    setCentro(item.centro);
+    setDescripcion(item.descripcion || "");
+    setEditId(item.id);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleUploadBulk = () => {
-    if (!bulkText.trim()) return;
-    const lines = bulkText.split("\n").map(l => l.trim()).filter(l => l !== "");
-    const nuevosCampos = [];
-
-    for (let line of lines) {
-      // Divide por comas o tabulaciones (útil al copiar de Excel)
-      const parts = line.split(/\t|,/);
-      if (parts.length >= 2) {
-        let c = parts[0].trim().replace(/^"|"$/g, '').toUpperCase();
-        let cc = parts[1].trim().replace(/^"|"$/g, '').toUpperCase();
-        // Si hay descripción, juntamos el resto
-        let desc = parts.length > 2 ? parts.slice(2).join(" ").trim().replace(/^"|"$/g, '') : "";
-
-        if (c && cc) {
-          nuevosCampos.push({ campo: c, centro: cc, descripcion: desc });
-        }
-      }
-    }
-
-    if (nuevosCampos.length === 0) {
-      alert("El formato es incorrecto. Asegúrate de usar 'Campo, Centro, Descripción' en cada línea.");
-      return;
-    }
-
-    onBulkUpload(nuevosCampos);
-    setBulkText("");
+  const handleCancelEdit = () => {
+    setCampo("");
+    setCentro("");
+    setDescripcion("");
+    setEditId(null);
   };
 
   return (
     <div style={{ maxWidth: "900px", margin: "0 auto", display: "flex", flexDirection: "column", gap: "20px" }}>
       
-      {/* SECCIÓN 1: AGREGAR INDIVIDUAL */}
+      {/* SECCIÓN 1: FORMULARIO AGREGAR / EDITAR */}
       <div className="form-card">
-        <h3 className="form-title">Agregar Campo / Centro de Costo</h3>
+        <h3 className="form-title">{editId ? "Editar Campo / Centro de Costo" : "Agregar Campo / Centro de Costo"}</h3>
+        <p style={{ color: "#64748b", fontSize: "14px", marginBottom: "20px" }}>
+          Administra aquí los fundos/campos y sus respectivos cuarteles o centros de costo para que aparezcan en el generador de Tarjas.
+        </p>
+
         <div className="form-grid" style={{ marginBottom: "10px", background: "#f8fafc", padding: "20px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
           <div className="form-group">
             <label>Nombre del Campo / Fundo *</label>
@@ -266,41 +253,19 @@ function CamposManager({ camposList, onAdd, onBulkUpload, onDelete, loading }) {
             <label>Descripción (Opcional)</label>
             <input value={descripcion} onChange={e => setDescripcion(e.target.value)} placeholder="Ej: Sector norte riego goteo..." />
           </div>
-          <div className="form-group" style={{ gridColumn: "1 / -1", textAlign: "right" }}>
-            <button className="btn-primary" onClick={handleAdd} disabled={loading}>
-              {loading ? "Guardando..." : "➕ Agregar Manualmente"}
+          
+          <div className="form-group" style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px" }}>
+            {editId && (
+              <button className="btn-secondary" onClick={handleCancelEdit} disabled={loading}>Cancelar</button>
+            )}
+            <button className="btn-primary" onClick={handleSaveClick} disabled={loading}>
+              {loading ? "Guardando..." : (editId ? "💾 Actualizar Centro" : "➕ Agregar al Sistema")}
             </button>
           </div>
         </div>
       </div>
 
-      {/* SECCIÓN 2: CARGA MASIVA */}
-      <div className="form-card">
-        <h3 className="form-title">Carga Masiva de Centros de Costo (Excel)</h3>
-        <p style={{ color: "#64748b", fontSize: "14px", marginBottom: "15px" }}>
-          Pega directamente las columnas desde Excel, o usa el formato: <code>Campo, Centro de Costo, Descripción</code>
-        </p>
-        
-        <div style={{ marginBottom: "15px" }}>
-          <label className="btn-secondary" style={{ cursor: "pointer", display: "inline-block" }}>
-            📁 Subir Archivo (.csv / .txt)
-            <input type="file" accept=".csv, .txt" onChange={handleFileUpload} style={{ display: "none" }} />
-          </label>
-        </div>
-
-        <textarea
-          rows={6}
-          value={bulkText}
-          onChange={(e) => setBulkText(e.target.value)}
-          placeholder="CARMEN ROSA, NOGALES 1, Sector Norte&#10;CARMEN ROSA, NOGALES 2, Sector Sur&#10;FUNDO ALFA, CUARTEL B, "
-          style={{ width: "100%", padding: "12px", borderRadius: "8px", border: "1px solid #cbd5e1", marginBottom: "15px", fontFamily: "monospace", whiteSpace: "pre" }}
-        />
-        <button className="btn-primary" onClick={handleUploadBulk} disabled={loading || !bulkText.trim()}>
-          {loading ? "Cargando..." : "📤 Procesar Carga Masiva"}
-        </button>
-      </div>
-
-      {/* SECCIÓN 3: LISTADO EXISTENTE */}
+      {/* SECCIÓN 2: LISTADO EXISTENTE */}
       <div className="form-card">
         <h3 className="form-title">Centros de Costo Registrados ({camposList.length})</h3>
         <div className="table-wrap">
@@ -310,16 +275,17 @@ function CamposManager({ camposList, onAdd, onBulkUpload, onDelete, loading }) {
                 <th>Campo / Fundo</th>
                 <th>Centro de Costo (Cuartel)</th>
                 <th>Descripción</th>
-                <th style={{ width: "80px", textAlign: "center" }}>Acción</th>
+                <th style={{ width: "120px", textAlign: "center" }}>Acciones</th>
               </tr>
             </thead>
             <tbody>
               {camposList.map(c => (
-                <tr key={c.id}>
+                <tr key={c.id} style={{ backgroundColor: editId === c.id ? "#fef9c3" : "transparent" }}>
                   <td style={{ fontWeight: "bold", color: "#0f172a" }}>{c.campo}</td>
                   <td>{c.centro}</td>
                   <td style={{ color: "#64748b", fontSize: "13px" }}>{c.descripcion || "—"}</td>
                   <td style={{ textAlign: "center" }}>
+                    <button className="btn-action" onClick={() => handleEditClick(c)} title="Editar">✏️</button>
                     <button className="btn-action btn-action-warn" onClick={() => onDelete(c.id)} title="Eliminar">🗑️</button>
                   </td>
                 </tr>
@@ -496,11 +462,9 @@ function TarjasManager({ camposList }) {
             
             .body { display: flex; align-items: center; justify-content: space-between; flex-grow: 1; padding: 2mm 0; height: 42mm; gap: 2mm;}
             
-            /* QR Gigante */
             .qr-container { width: 40mm; height: 40mm; display: flex; align-items: center; justify-content: flex-start; flex-shrink: 0;}
             .qr-img { width: 100%; height: 100%; object-fit: contain; }
             
-            /* Texto reducido a 16pt para que no se desborde */
             .text-container { display: flex; align-items: center; justify-content: flex-end; flex-grow: 1; overflow: hidden;}
             .text-code { font-size: 16pt; font-weight: 900; letter-spacing: 0; text-align: right; word-break: break-all; line-height: 1.1;}
             
@@ -643,11 +607,11 @@ function TarjasManager({ camposList }) {
             {tarjas.map(t => (
               <div key={t.codigo} style={{ background: "#fff", padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e1", width: "320px", display: "flex", flexDirection: "column", color: "#000" }}>
                 
-                <div style={{ fontSize: "11px", fontWeight: "bold", display: "flex", justifyContent: "space-between", borderBottom: "3px solid #000", paddingBottom: "3px", marginBottom: "3px" }}>
+                <div style={{ fontSize: "11px", fontWeight: "bold", display: "flex", justifyContent: "space-between", borderBottom: "2px solid #000", paddingBottom: "3px", marginBottom: "3px" }}>
                   <span>{empresaActiva.nombre.substring(0,25)}</span><span>{t.fechaStr}</span>
                 </div>
                 
-                <div style={{ fontSize: "12px", fontWeight: "bold", display: "flex", justifyContent: "space-between", borderBottom: "3px solid #000", paddingBottom: "3px", marginBottom: "3px" }}>
+                <div style={{ fontSize: "12px", fontWeight: "bold", display: "flex", justifyContent: "space-between", borderBottom: "2px solid #000", paddingBottom: "3px", marginBottom: "3px" }}>
                   <span>C.COSTO: {t.centroCosto.substring(0,15)}</span><span>CORTE: {t.corte}</span>
                 </div>
 
@@ -658,7 +622,7 @@ function TarjasManager({ camposList }) {
                   </div>
                 </div>
 
-                <div style={{ fontSize: "11px", fontWeight: "bold", display: "flex", justifyContent: "space-between", borderTop: "3px solid #000", paddingTop: "3px", marginTop: "3px" }}>
+                <div style={{ fontSize: "11px", fontWeight: "bold", display: "flex", justifyContent: "space-between", borderTop: "2px solid #000", paddingTop: "3px", marginTop: "3px" }}>
                   <span>CAMPO: {t.campo.substring(0,20)}</span><span>RUT: {empresaActiva.rut}</span>
                 </div>
 
@@ -1018,34 +982,17 @@ export default function App() {
     reader.readAsDataURL(file);
   };
 
-  const handleAddCampo = async (data) => {
+  // Función Guardar Campo (Maneja Crear y Actualizar)
+  const handleSaveCampo = async (data, id) => {
     setLoadingData(true);
     try {
-      await addDoc(collection(db, "campos"), { ...data, creadoEn: serverTimestamp() });
+      if (id) {
+        await updateDoc(doc(db, "campos", id), { ...data, actualizadoEn: serverTimestamp() });
+      } else {
+        await addDoc(collection(db, "campos"), { ...data, creadoEn: serverTimestamp() });
+      }
       await loadData();
-    } catch (error) { alert("Error al guardar: " + error.message); }
-    setLoadingData(false);
-  };
-  
-  // NUEVA FUNCIÓN DE CARGA MASIVA DE CAMPOS
-  const handleBulkUploadCampos = async (camposArray) => {
-    setLoadingData(true);
-    try {
-      const batch = writeBatch(db);
-      camposArray.forEach(item => {
-        const docRef = doc(collection(db, "campos"));
-        batch.set(docRef, { 
-          campo: item.campo, 
-          centro: item.centro, 
-          descripcion: item.descripcion, 
-          creadoEn: serverTimestamp() 
-        });
-      });
-      await batch.commit();
-      await loadData();
-    } catch (error) {
-      alert("Error al cargar campos masivamente: " + error.message);
-    }
+    } catch (error) { alert("Error al guardar el campo: " + error.message); }
     setLoadingData(false);
   };
 
@@ -1256,7 +1203,7 @@ export default function App() {
         {view === "workers_form" && <WorkerForm onSave={handleSaveWorker} onCancel={() => { setView("workers_list"); setEditTarget(null); }} initial={editTarget} contractorsList={contractors} credentialsList={credentials} />}
         {view === "contractors_form" && <ContractorForm onSave={handleSaveContractor} onCancel={() => { setView("contractors_list"); setEditTarget(null); }} initial={editTarget} />}
         {view === "credentials_list" && <CredentialsManager credentialsList={credentials} onBulkUpload={handleBulkUploadCredentials} onDelete={handleDeleteCredential} loading={loadingData} />}
-        {view === "campos" && <CamposManager camposList={camposList} onAdd={handleAddCampo} onBulkUpload={handleBulkUploadCampos} onDelete={handleDeleteCampo} loading={loadingData} />}
+        {view === "campos" && <CamposManager camposList={camposList} onSave={handleSaveCampo} onDelete={handleDeleteCampo} loading={loadingData} />}
         {view === "tarjas" && <TarjasManager camposList={camposList} />}
 
         {(view === "workers_list" || view === "contractors_list") && (
