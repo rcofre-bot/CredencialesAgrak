@@ -86,6 +86,8 @@ function QRCard({ worker, logoUrl, onClose }) {
     if (!canvasRef.current) return;
     const qrImageUrl = canvasRef.current.toDataURL("image/png");
     const win = window.open("", "_blank", "width=600,height=700");
+    if (!win) { alert("Por favor permite las ventanas emergentes (pop-ups) para imprimir."); return; }
+    
     win.document.write(`
       <!DOCTYPE html>
       <html>
@@ -197,7 +199,7 @@ function CamposManager({ camposList, onAdd, onDelete, loading }) {
       return;
     }
     onAdd({ campo: campo.toUpperCase().trim(), centro: centro.toUpperCase().trim() });
-    setCentro(""); // Borramos solo el centro para que sea fácil agregar varios al mismo campo
+    setCentro(""); 
   };
 
   return (
@@ -262,7 +264,6 @@ function TarjasManager({ camposList }) {
   const [empresaIdx, setEmpresaIdx] = useState(0);
   const [fecha, setFecha] = useState(new Date().toISOString().split("T")[0]);
   
-  // Autocompletado de Campo y Centro
   const [campoSeleccionado, setCampoSeleccionado] = useState("");
   const [centroSeleccionado, setCentroSeleccionado] = useState("");
   const [corte, setCorte] = useState("");
@@ -276,9 +277,8 @@ function TarjasManager({ camposList }) {
   const [procesando, setProcesando] = useState(false);
   const prefijo = "AAON"; 
 
-  const empresaActiva = EMPRESAS_TARJAS[empresaIdx];
+  const empresaActiva = EMPRESAS_TARJAS[empresaIdx] || EMPRESAS_TARJAS[0];
 
-  // Filtros para las listas desplegables
   const camposUnicos = [...new Set(camposList.map(c => c.campo))];
   const centrosFiltrados = camposList.filter(c => c.campo === campoSeleccionado).map(c => c.centro);
 
@@ -304,7 +304,7 @@ function TarjasManager({ camposList }) {
       
     } catch (e) {
       console.error("Error al cargar historial de tarjas:", e);
-      setUltimoCodigo("Error al cargar");
+      setUltimoCodigo("Error de conexión");
     }
   }, []);
 
@@ -317,11 +317,17 @@ function TarjasManager({ camposList }) {
       alert("Por favor, selecciona el Campo, Centro de Costo y Corte antes de previsualizar.");
       return;
     }
+    const cantNum = parseInt(cantidad || 0);
+    if (cantNum < 1) {
+      alert("La cantidad debe ser mayor a 0.");
+      return;
+    }
+
     const nuevasTarjas = [];
     const [y, m, d] = fecha.split("-");
     const fechaStr = `${d}-${m}-${y}`;
 
-    for (let i = 0; i < cantidad; i++) {
+    for (let i = 0; i < cantNum; i++) {
       const numActual = inicio + i;
       const numStr = String(numActual).padStart(4, '0');
       const codigoQRData = `bin;${prefijo}${numStr}`;
@@ -342,7 +348,8 @@ function TarjasManager({ camposList }) {
     }
 
     setProcesando(true);
-    const numFin = inicio + parseInt(cantidad) - 1;
+    const cantNum = parseInt(cantidad || 0);
+    const numFin = inicio + cantNum - 1;
 
     try {
       await addDoc(collection(db, "tarjas_history"), {
@@ -353,18 +360,24 @@ function TarjasManager({ camposList }) {
         corte: corte.toUpperCase(),
         prefijo: prefijo,
         inicio: inicio,
-        cantidad: parseInt(cantidad),
+        cantidad: cantNum,
         fin: numFin,
         creadoEn: serverTimestamp()
       });
     } catch(e) {
       console.error("Error al guardar historial de tarjas", e);
-      alert("Hubo un error al guardar el registro en la nube.");
+      alert("Hubo un error al guardar el registro en la nube. Revisa tus permisos.");
       setProcesando(false);
       return;
     }
 
     const win = window.open("", "_blank");
+    if (!win) {
+      alert("El navegador bloqueó la ventana de impresión. Por favor, permite las ventanas emergentes (Pop-ups).");
+      setProcesando(false);
+      return;
+    }
+
     let html = `
       <!DOCTYPE html>
       <html>
@@ -399,11 +412,9 @@ function TarjasManager({ camposList }) {
             
             .body { display: flex; align-items: center; justify-content: space-between; flex-grow: 1; padding: 2mm 0; height: 42mm; gap: 2mm;}
             
-            /* QR Gigante */
             .qr-container { width: 40mm; height: 40mm; display: flex; align-items: center; justify-content: flex-start; flex-shrink: 0;}
             .qr-img { width: 100%; height: 100%; object-fit: contain; }
             
-            /* Texto reducido a 16pt para que no se desborde */
             .text-container { display: flex; align-items: center; justify-content: flex-end; flex-grow: 1; overflow: hidden;}
             .text-code { font-size: 16pt; font-weight: 900; letter-spacing: 0; text-align: right; word-break: break-all; line-height: 1.1;}
             
@@ -468,7 +479,7 @@ function TarjasManager({ camposList }) {
         {/* PARTE 1: DATOS MODIFICABLES */}
         <div className="form-group" style={{ gridColumn: "1 / -1" }}>
           <label>Empresa Emisora</label>
-          <select value={empresaIdx} onChange={e => setEmpresaIdx(e.target.value)} style={{ fontWeight: "bold", width: "100%", padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e1" }}>
+          <select value={empresaIdx} onChange={e => setEmpresaIdx(Number(e.target.value))} style={{ fontWeight: "bold", width: "100%", padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e1" }}>
             {EMPRESAS_TARJAS.map((emp, idx) => (
               <option key={idx} value={idx}>{emp.nombre} - RUT: {emp.rut}</option>
             ))}
@@ -555,9 +566,9 @@ function TarjasManager({ camposList }) {
                 </div>
 
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0" }}>
-                  <img src={t.qrUrl} alt="QR" style={{ width: "100px", height: "100px" }} />
-                  <div style={{ textAlign: "right", paddingLeft: "10px" }}>
-                    <div style={{ fontWeight: "900", fontSize: "20px", letterSpacing: "0px", wordBreak: "break-all", lineHeight: "1.1" }}>{t.codigo}</div>
+                  <img src={t.qrUrl} alt="QR" style={{ width: "100px", height: "100px", flexShrink: 0 }} />
+                  <div style={{ textAlign: "right", paddingLeft: "10px", flexGrow: 1, overflow: "hidden" }}>
+                    <div style={{ fontWeight: "900", fontSize: "18px", letterSpacing: "0px", wordBreak: "break-all", lineHeight: "1.1" }}>{t.codigo}</div>
                   </div>
                 </div>
 
@@ -729,6 +740,132 @@ function CredentialsManager({ credentialsList, onBulkUpload, onDelete, loading }
   );
 }
 
+// ─── Formulario de Trabajador ───────────────────────────
+function WorkerForm({ onSave, onCancel, initial, contractorsList, credentialsList }) {
+  const [form, setForm] = useState(initial || EMPTY_WORKER_FORM);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const handleRutChange = (e) => set("rut", formatRut(e.target.value));
+
+  const availableCount = credentialsList?.filter(c => c.estado === "Disponible").length || 0;
+
+  const handleSubmit = async () => {
+    if (!form.rut || !form.nombre || !form.apellido || !form.fechaIngreso) {
+      setError("Completa los campos obligatorios: RUT, Nombre, Apellido y Fecha de Ingreso.");
+      return;
+    }
+    if (!validateRut(form.rut)) {
+      setError("El RUT ingresado no es válido. Verifica que esté correcto.");
+      return;
+    }
+
+    setError(""); setLoading(true);
+    try { 
+      await onSave(form); 
+    } catch (e) { 
+      setError(e.message); 
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div className="form-card">
+      <h3 className="form-title">{initial ? "Editar Trabajador" : "Registrar Trabajador"}</h3>
+      {error && <div className="alert-error">{error}</div>}
+      <div className="form-grid">
+        <div className="form-group"><label>RUT *</label><input value={form.rut} onChange={handleRutChange} placeholder="12.345.678-9" maxLength={12} /></div>
+        <div className="form-group"><label>Nombre *</label><input value={form.nombre} onChange={(e) => set("nombre", e.target.value)} placeholder="Nombre" /></div>
+        <div className="form-group"><label>Apellido *</label><input value={form.apellido} onChange={(e) => set("apellido", e.target.value)} placeholder="Apellido" /></div>
+        
+        <div className="form-group">
+          <label>Contratista (Empresa o Contacto)</label>
+          <input 
+            list="lista-contratistas" 
+            value={form.contratista} 
+            onChange={(e) => set("contratista", e.target.value)} 
+            placeholder="Escribe el nombre o contacto..."
+            autoComplete="off"
+          />
+          <datalist id="lista-contratistas">
+            {contractorsList.filter(c => c.estado === "Activo").map((c) => (
+              <option key={c.id} value={`${c.nombre}${c.contacto ? ` - Contacto: ${c.contacto}` : ""}`} />
+            ))}
+          </datalist>
+        </div>
+
+        <div className="form-group"><label>Fecha de Ingreso *</label><input type="date" value={form.fechaIngreso} onChange={(e) => set("fechaIngreso", e.target.value)} /></div>
+        <div className="form-group"><label>Estado</label><select value={form.estado} onChange={(e) => set("estado", e.target.value)}><option value="Activo">Activo</option><option value="Inactivo">Inactivo</option></select></div>
+        
+        <div className="form-group" style={{ gridColumn: "1 / -1", background: "#f8fafc", padding: "15px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+          <label style={{ fontSize: "14px", fontWeight: "700", color: "#0f172a", marginBottom: "8px", display: "block" }}>
+            🪪 Credencial Virtual (Asignación Automática)
+          </label>
+          
+          {initial ? (
+            <p style={{ margin: 0, fontSize: "14px", color: "#475569" }}>
+              ✅ Este perfil ya tiene su QR guardado. (Si el estado cambia a Inactivo, la credencial se liberará automáticamente).
+            </p>
+          ) : (
+            <p style={{ margin: 0, fontSize: "14px", color: availableCount > 0 ? "#166534" : "#dc2626" }}>
+              {availableCount > 0 
+                ? `✨ Al guardar, se le asignará automáticamente el siguiente folio disponible (Quedan ${availableCount}).` 
+                : `⚠️ No quedan folios precargados. El sistema generará un folio VIRTUAL de emergencia.`}
+            </p>
+          )}
+        </div>
+
+      </div>
+      <div className="form-actions">
+        <button className="btn-secondary" onClick={onCancel} disabled={loading}>Cancelar</button>
+        <button className="btn-primary" onClick={handleSubmit} disabled={loading}>{loading ? "Guardando…" : initial ? "Actualizar" : "Registrar y Asignar QR"}</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Formulario de Contratista ──────────────────────────
+function ContractorForm({ onSave, onCancel, initial }) {
+  const [form, setForm] = useState(initial || EMPTY_CONTRACTOR_FORM);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const handleRutChange = (e) => set("rut", formatRut(e.target.value));
+
+  const handleSubmit = async () => {
+    if (!form.rut || !form.nombre) {
+      setError("Completa los campos obligatorios: RUT y Nombre de Empresa.");
+      return;
+    }
+    if (!validateRut(form.rut)) {
+      setError("El RUT de la empresa no es válido. Verifica que esté correcto.");
+      return;
+    }
+    setError(""); setLoading(true);
+    try { await onSave(form); } catch (e) { setError(e.message); }
+    setLoading(false);
+  };
+
+  return (
+    <div className="form-card">
+      <h3 className="form-title">{initial ? "Editar Contratista" : "Registrar Contratista"}</h3>
+      {error && <div className="alert-error">{error}</div>}
+      <div className="form-grid">
+        <div className="form-group"><label>RUT Empresa *</label><input value={form.rut} onChange={handleRutChange} placeholder="76.123.456-7" maxLength={12} /></div>
+        <div className="form-group"><label>Nombre Empresa *</label><input value={form.nombre} onChange={(e) => set("nombre", e.target.value)} placeholder="Ej: Constructora Alfa" /></div>
+        <div className="form-group"><label>Contacto (Opcional)</label><input value={form.contacto} onChange={(e) => set("contacto", e.target.value)} placeholder="Nombre o Teléfono" /></div>
+        <div className="form-group"><label>Estado</label><select value={form.estado} onChange={(e) => set("estado", e.target.value)}><option value="Activo">Activo</option><option value="Inactivo">Inactivo</option></select></div>
+      </div>
+      <div className="form-actions">
+        <button className="btn-secondary" onClick={onCancel} disabled={loading}>Cancelar</button>
+        <button className="btn-primary" onClick={handleSubmit} disabled={loading}>{loading ? "Guardando…" : "Registrar Contratista"}</button>
+      </div>
+    </div>
+  );
+}
+
 // ─── App Principal ───────────────────────────────────────
 export default function App() {
   const [user, setUser] = useState(null);
@@ -737,7 +874,7 @@ export default function App() {
   const [workers, setWorkers] = useState([]);
   const [contractors, setContractors] = useState([]);
   const [credentials, setCredentials] = useState([]);
-  const [camposList, setCamposList] = useState([]); // Nuevo estado para Campos
+  const [camposList, setCamposList] = useState([]); 
   
   const [loadingData, setLoadingData] = useState(false);
   const [view, setView] = useState("workers_list"); 
@@ -755,21 +892,33 @@ export default function App() {
 
   const loadData = useCallback(async () => {
     setLoadingData(true);
-    try {
-      const qw = query(collection(db, "workers"), orderBy("creadoEn", "desc"));
-      const qc = query(collection(db, "contractors"), orderBy("creadoEn", "desc"));
-      const qcred = query(collection(db, "credentials"), orderBy("creadoEn", "desc"));
-      const qcampos = query(collection(db, "campos"), orderBy("creadoEn", "desc")); // Cargamos los campos
+    
+    // Función auxiliar segura para no bloquear la app si falta una regla de Firebase
+    const fetchSafe = async (q) => {
+      try {
+        const snap = await getDocs(q);
+        return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      } catch (e) {
+        console.error("Error cargando colección:", e);
+        return [];
+      }
+    };
 
-      const [snapW, snapC, snapCred, snapCampos] = await Promise.all([getDocs(qw), getDocs(qc), getDocs(qcred), getDocs(qcampos)]);
-      
-      setWorkers(snapW.docs.map(d => ({ id: d.id, ...d.data() })));
-      setContractors(snapC.docs.map(d => ({ id: d.id, ...d.data() })));
-      setCredentials(snapCred.docs.map(d => ({ id: d.id, ...d.data() })));
-      setCamposList(snapCampos.docs.map(d => ({ id: d.id, ...d.data() })));
-    } catch (e) {
-      console.error(e);
-    }
+    const qw = query(collection(db, "workers"), orderBy("creadoEn", "desc"));
+    const qc = query(collection(db, "contractors"), orderBy("creadoEn", "desc"));
+    const qcred = query(collection(db, "credentials"), orderBy("creadoEn", "desc"));
+    const qcampos = query(collection(db, "campos"), orderBy("creadoEn", "desc"));
+
+    // Cargamos todo de manera independiente
+    const [w, c, cred, cam] = await Promise.all([
+      fetchSafe(qw), fetchSafe(qc), fetchSafe(qcred), fetchSafe(qcampos)
+    ]);
+    
+    setWorkers(w);
+    setContractors(c);
+    setCredentials(cred);
+    setCamposList(cam);
+
     setLoadingData(false);
   }, []);
 
@@ -785,7 +934,6 @@ export default function App() {
     reader.readAsDataURL(file);
   };
 
-  // Funciones para Mantenedor de Campos
   const handleAddCampo = async (data) => {
     setLoadingData(true);
     try {
@@ -996,7 +1144,6 @@ export default function App() {
           <button onClick={() => { setView("contractors_list"); setSearch(""); setEditTarget(null); }} style={{ padding: "10px 20px", border: "none", borderRadius: "6px", backgroundColor: view.includes("contractors") ? "#101c38" : "#f1f5f9", color: view.includes("contractors") ? "#ffffff" : "#475569", cursor: "pointer", fontWeight: "600", fontSize: "14px", transition: "all 0.2s" }}>🏢 Contratistas</button>
           <button onClick={() => { setView("credentials_list"); setSearch(""); setEditTarget(null); }} style={{ padding: "10px 20px", border: "none", borderRadius: "6px", backgroundColor: view === "credentials_list" ? "#101c38" : "#f1f5f9", color: view === "credentials_list" ? "#ffffff" : "#475569", cursor: "pointer", fontWeight: "600", fontSize: "14px", transition: "all 0.2s" }}>🪪 Gestión Credenciales</button>
           <button onClick={() => { setView("tarjas"); setSearch(""); setEditTarget(null); }} style={{ padding: "10px 20px", border: "none", borderRadius: "6px", backgroundColor: view === "tarjas" ? "#16a34a" : "#f1f5f9", color: view === "tarjas" ? "#ffffff" : "#475569", cursor: "pointer", fontWeight: "600", fontSize: "14px", transition: "all 0.2s" }}>🏷️ Tarjas de Cosecha</button>
-          {/* NUEVO BOTÓN PARA MANTENEDOR DE CAMPOS */}
           <button onClick={() => { setView("campos"); setSearch(""); setEditTarget(null); }} style={{ padding: "10px 20px", border: "none", borderRadius: "6px", backgroundColor: view === "campos" ? "#b45309" : "#f1f5f9", color: view === "campos" ? "#ffffff" : "#475569", cursor: "pointer", fontWeight: "600", fontSize: "14px", transition: "all 0.2s" }}>📍 Campos y C. Costo</button>
         </div>
 
