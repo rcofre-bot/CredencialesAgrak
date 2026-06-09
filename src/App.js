@@ -71,7 +71,7 @@ const EMPTY_CONTRACTOR_FORM = {
   rut: "", nombre: "", contacto: "", estado: "Activo",
 };
 
-// ─── Componente QR Canvas (Para Personal) ───────────────
+// ─── Componente QR Canvas (Para Personal - SIN MODIFICAR) ─
 function QRCard({ worker, logoUrl, onClose }) {
   const canvasRef = useRef(null);
 
@@ -253,9 +253,8 @@ function TarjasManager() {
       const numStr = String(numActual).padStart(4, '0');
       const codigoQRData = `bin;${prefijo}${numStr}`;
       
-      // Código QR limpio para Zebra
       const qrDataUrl = await QRCode.toDataURL(codigoQRData, {
-        width: 300, margin: 0, color: { dark: "#000000", light: "#ffffff" }
+        width: 400, margin: 0, color: { dark: "#000000", light: "#ffffff" }
       });
 
       nuevasTarjas.push({ codigo: codigoQRData, qrUrl: qrDataUrl, fechaStr, cuartel, corte });
@@ -272,7 +271,7 @@ function TarjasManager() {
     setProcesando(true);
     const numFin = inicio + parseInt(cantidad) - 1;
 
-    // 1. Guardar historial
+    // 1. Guardar historial en Firebase
     try {
       await addDoc(collection(db, "tarjas_history"), {
         empresa: empresaActiva.nombre,
@@ -293,7 +292,7 @@ function TarjasManager() {
       return;
     }
 
-    // 2. Construir ventana de impresión ZEBRA STRICT
+    // 2. Construir ventana de impresión con MEDIDAS FÍSICAS ABSOLUTAS (mm y pt)
     const win = window.open("", "_blank");
     let html = `
       <!DOCTYPE html>
@@ -301,23 +300,22 @@ function TarjasManager() {
         <head>
           <title>Impresión Zebra</title>
           <style>
-            /* Reset absoluto */
             * { box-sizing: border-box; margin: 0; padding: 0; }
             
-            /* Configuramos el tamaño del papel exacto para que el navegador no adivine */
+            /* Fuerza al navegador a usar exactamente el tamaño de tu rollo */
             @page { size: 100mm 70mm; margin: 0; padding: 0; }
             
             body { 
               font-family: 'Arial', sans-serif; 
               background: #fff; 
               color: #000; 
+              width: 100mm;
+              height: 70mm;
             }
 
             @media print {
-              html, body { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; }
+              html, body { width: 100mm; height: 70mm; margin: 0; padding: 0; overflow: hidden; }
               .label { 
-                width: 100vw !important; 
-                height: 100vh !important;
                 border: none !important; 
                 margin: 0 !important; 
                 page-break-after: always; 
@@ -325,11 +323,11 @@ function TarjasManager() {
               }
             }
 
-            /* Etiqueta base ampliada al máximo */
+            /* Contenedor exacto de 100x70mm */
             .label { 
               width: 100mm; 
               height: 70mm; 
-              padding: 3mm 4mm; /* Margen de seguridad interno muy pequeño */
+              padding: 3mm 4mm; 
               display: flex;
               flex-direction: column;
               justify-content: space-between;
@@ -338,21 +336,17 @@ function TarjasManager() {
               border: 1px dashed #ccc; 
             }
             
-            .header { display: flex; justify-content: space-between; font-size: 14px; font-weight: bold; border-bottom: 3px solid #000; padding-bottom: 2px; margin-bottom: 2px;}
-            .sub-header { display: flex; justify-content: space-between; font-size: 16px; font-weight: bold; border-bottom: 3px solid #000; padding-bottom: 2px; }
+            .header { display: flex; justify-content: space-between; font-size: 8pt; font-weight: bold; border-bottom: 0.8mm solid #000; padding-bottom: 1mm; margin-bottom: 1mm;}
+            .sub-header { display: flex; justify-content: space-between; font-size: 10pt; font-weight: bold; border-bottom: 0.8mm solid #000; padding-bottom: 1mm; }
             
-            /* El cuerpo central donde vive el QR y el Código */
-            .body { display: flex; align-items: center; justify-content: space-between; flex-grow: 1; padding: 2mm 0;}
-            
-            /* Hacemos el QR inmenso (50x50 milímetros) */
-            .qr-container { width: 50mm; height: 50mm; display: flex; align-items: center; justify-content: flex-start; }
+            .body { display: flex; align-items: center; justify-content: space-between; flex-grow: 1; padding: 2mm 0; height: 42mm;}
+            .qr-container { width: 42mm; height: 42mm; display: flex; align-items: center; justify-content: flex-start; }
             .qr-img { width: 100%; height: 100%; object-fit: contain; }
             
-            /* Código a la derecha */
-            .text-container { display: flex; align-items: center; justify-content: flex-end; width: 42mm; }
-            .text-code { font-size: 32px; font-weight: 900; letter-spacing: -1px; text-align: right; word-break: break-all; line-height: 1.1;}
+            .text-container { display: flex; align-items: center; justify-content: flex-end; width: 46mm; }
+            .text-code { font-size: 22pt; font-weight: 900; letter-spacing: -0.5pt; text-align: right; word-break: break-all; line-height: 1.1;}
             
-            .footer { display: flex; justify-content: space-between; font-size: 14px; font-weight: bold; border-top: 3px solid #000; padding-top: 2px; margin-top: 2px;}
+            .footer { display: flex; justify-content: space-between; font-size: 8pt; font-weight: bold; border-top: 0.8mm solid #000; padding-top: 1mm; margin-top: 1mm;}
           </style>
         </head>
         <body>
@@ -363,7 +357,7 @@ function TarjasManager() {
         <div class="label">
           <div>
             <div class="header">
-              <span>${empresaActiva.nombre.substring(0, 22)}...</span>
+              <span>${empresaActiva.nombre.substring(0, 25)}</span>
               <span>${t.fechaStr}</span>
             </div>
             <div class="sub-header">
@@ -378,7 +372,7 @@ function TarjasManager() {
             </div>
           </div>
           <div class="footer">
-            <span>${empresaActiva.fundo.substring(0, 18)}</span>
+            <span>${empresaActiva.fundo.substring(0, 20)}</span>
             <span>RUT: ${empresaActiva.rut}</span>
           </div>
         </div>
@@ -461,7 +455,7 @@ function TarjasManager() {
               <div key={t.codigo} style={{ background: "#fff", padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e1", width: "320px", display: "flex", flexDirection: "column", color: "#000" }}>
                 
                 <div style={{ fontSize: "11px", fontWeight: "bold", display: "flex", justifyContent: "space-between", borderBottom: "3px solid #000", paddingBottom: "3px", marginBottom: "3px" }}>
-                  <span>{empresaActiva.nombre.substring(0,22)}...</span><span>{t.fechaStr}</span>
+                  <span>{empresaActiva.nombre.substring(0,25)}...</span><span>{t.fechaStr}</span>
                 </div>
                 
                 <div style={{ fontSize: "12px", fontWeight: "bold", display: "flex", justifyContent: "space-between", borderBottom: "3px solid #000", paddingBottom: "3px", marginBottom: "3px" }}>
