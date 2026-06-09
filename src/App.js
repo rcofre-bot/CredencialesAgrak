@@ -199,14 +199,13 @@ function TarjasManager() {
   const [corte, setCorte] = useState("");
   const [cantidad, setCantidad] = useState(10);
   
-  // Historial y correlativo
   const [historial, setHistorial] = useState([]);
   const [inicio, setInicio] = useState(1);
   const [ultimoCodigo, setUltimoCodigo] = useState("Cargando...");
   
   const [tarjas, setTarjas] = useState([]);
   const [procesando, setProcesando] = useState(false);
-  const prefijo = "AAON"; // FIJO, no modificable
+  const prefijo = "AAON"; 
 
   const empresaActiva = EMPRESAS_TARJAS[empresaIdx];
 
@@ -240,7 +239,6 @@ function TarjasManager() {
     cargarHistorial();
   }, [cargarHistorial]);
 
-  // Genera las tarjas SOLAMENTE para previsualizar en pantalla
   const generarPrevisualizacion = async () => {
     if (!cuartel || !corte) {
       alert("Por favor, ingresa el Cuartel y el Corte antes de previsualizar.");
@@ -255,6 +253,7 @@ function TarjasManager() {
       const numStr = String(numActual).padStart(4, '0');
       const codigoQRData = `bin;${prefijo}${numStr}`;
       
+      // Código QR limpio para Zebra
       const qrDataUrl = await QRCode.toDataURL(codigoQRData, {
         width: 300, margin: 0, color: { dark: "#000000", light: "#ffffff" }
       });
@@ -264,7 +263,6 @@ function TarjasManager() {
     setTarjas(nuevasTarjas);
   };
 
-  // Función crítica: Guarda en Firebase y manda a imprimir
   const registrarEImprimirZebra = async () => {
     if (tarjas.length === 0) {
       alert("Primero debes previsualizar el lote generado.");
@@ -274,7 +272,7 @@ function TarjasManager() {
     setProcesando(true);
     const numFin = inicio + parseInt(cantidad) - 1;
 
-    // 1. Guardar en Base de Datos (Auditoría e Historial)
+    // 1. Guardar historial
     try {
       await addDoc(collection(db, "tarjas_history"), {
         empresa: empresaActiva.nombre,
@@ -295,28 +293,31 @@ function TarjasManager() {
       return;
     }
 
-    // 2. Construir la ventana de impresión para la Zebra
+    // 2. Construir ventana de impresión ZEBRA STRICT
     const win = window.open("", "_blank");
     let html = `
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Impresión Zebra - Tarjas</title>
+          <title>Impresión Zebra</title>
           <style>
-            /* Zebra Strict Reset */
+            /* Reset absoluto */
             * { box-sizing: border-box; margin: 0; padding: 0; }
+            
+            /* Configuramos el tamaño del papel exacto para que el navegador no adivine */
             @page { size: 100mm 70mm; margin: 0; padding: 0; }
             
             body { 
               font-family: 'Arial', sans-serif; 
               background: #fff; 
               color: #000; 
-              width: 100mm;
             }
 
             @media print {
-              body { display: block; }
+              html, body { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; }
               .label { 
+                width: 100vw !important; 
+                height: 100vh !important;
                 border: none !important; 
                 margin: 0 !important; 
                 page-break-after: always; 
@@ -324,31 +325,34 @@ function TarjasManager() {
               }
             }
 
-            /* Etiqueta 100x70 Exacta */
+            /* Etiqueta base ampliada al máximo */
             .label { 
               width: 100mm; 
               height: 70mm; 
-              padding: 3mm 4mm; 
+              padding: 3mm 4mm; /* Margen de seguridad interno muy pequeño */
               display: flex;
               flex-direction: column;
               justify-content: space-between;
               overflow: hidden; 
               background: #fff;
-              border: 1px dashed #ccc; /* Visible en pantalla, no en zebra */
+              border: 1px dashed #ccc; 
             }
             
-            .header { display: flex; justify-content: space-between; font-size: 10px; font-weight: bold; border-bottom: 2px solid #000; padding-bottom: 2px; margin-bottom: 2px;}
-            .sub-header { display: flex; justify-content: space-between; font-size: 11px; font-weight: bold; border-bottom: 2px solid #000; padding-bottom: 2px; }
+            .header { display: flex; justify-content: space-between; font-size: 14px; font-weight: bold; border-bottom: 3px solid #000; padding-bottom: 2px; margin-bottom: 2px;}
+            .sub-header { display: flex; justify-content: space-between; font-size: 16px; font-weight: bold; border-bottom: 3px solid #000; padding-bottom: 2px; }
             
-            /* Contenedor central mejorado (QR Grande y texto completo) */
-            .body { display: flex; align-items: center; justify-content: space-between; flex-grow: 1; padding: 2mm 0; height: 50mm;}
-            .qr-container { width: 48mm; height: 48mm; display: flex; align-items: center; justify-content: flex-start; }
+            /* El cuerpo central donde vive el QR y el Código */
+            .body { display: flex; align-items: center; justify-content: space-between; flex-grow: 1; padding: 2mm 0;}
+            
+            /* Hacemos el QR inmenso (50x50 milímetros) */
+            .qr-container { width: 50mm; height: 50mm; display: flex; align-items: center; justify-content: flex-start; }
             .qr-img { width: 100%; height: 100%; object-fit: contain; }
             
-            .text-container { display: flex; align-items: center; justify-content: flex-end; width: 40mm; }
-            .text-code { font-size: 22px; font-weight: 900; letter-spacing: 0px; text-align: right; word-break: break-all; line-height: 1.1;}
+            /* Código a la derecha */
+            .text-container { display: flex; align-items: center; justify-content: flex-end; width: 42mm; }
+            .text-code { font-size: 32px; font-weight: 900; letter-spacing: -1px; text-align: right; word-break: break-all; line-height: 1.1;}
             
-            .footer { display: flex; justify-content: space-between; font-size: 10px; font-weight: bold; border-top: 2px solid #000; padding-top: 2px; margin-top: 2px;}
+            .footer { display: flex; justify-content: space-between; font-size: 14px; font-weight: bold; border-top: 3px solid #000; padding-top: 2px; margin-top: 2px;}
           </style>
         </head>
         <body>
@@ -359,7 +363,7 @@ function TarjasManager() {
         <div class="label">
           <div>
             <div class="header">
-              <span>${empresaActiva.nombre}</span>
+              <span>${empresaActiva.nombre.substring(0, 22)}...</span>
               <span>${t.fechaStr}</span>
             </div>
             <div class="sub-header">
@@ -374,7 +378,7 @@ function TarjasManager() {
             </div>
           </div>
           <div class="footer">
-            <span>${empresaActiva.fundo}</span>
+            <span>${empresaActiva.fundo.substring(0, 18)}</span>
             <span>RUT: ${empresaActiva.rut}</span>
           </div>
         </div>
@@ -386,9 +390,9 @@ function TarjasManager() {
     win.document.close();
     win.focus();
     
-    // 3. Actualizar estado y limpiar para el siguiente lote
+    // 3. Limpiar y refrescar
     await cargarHistorial();
-    setTarjas([]); // Ocultamos la preview para que no vuelvan a imprimir lo mismo sin querer
+    setTarjas([]);
     setProcesando(false);
     
     setTimeout(() => { win.print(); }, 500);
@@ -406,8 +410,6 @@ function TarjasManager() {
       </p>
 
       <div className="form-grid" style={{ marginBottom: "20px", background: "#f8fafc", padding: "20px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
-        
-        {/* PARTE 1: DATOS MODIFICABLES */}
         <div className="form-group" style={{ gridColumn: "1 / -1" }}>
           <label>Empresa y Fundo</label>
           <select value={empresaIdx} onChange={e => setEmpresaIdx(e.target.value)} style={{ fontWeight: "bold", width: "100%", padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e1" }}>
@@ -421,7 +423,6 @@ function TarjasManager() {
         <div className="form-group"><label>Cuartel *</label><input value={cuartel} onChange={e => setCuartel(e.target.value.toUpperCase())} placeholder="Ej: LOS NOGALES 1" /></div>
         <div className="form-group"><label>Corte *</label><input value={corte} onChange={e => setCorte(e.target.value.toUpperCase())} placeholder="Ej: 1" /></div>
         
-        {/* PARTE 2: DATOS BLOQUEADOS (Correlativo) */}
         <div className="form-group">
           <label>Último Código Impreso</label>
           <input value={ultimoCodigo} disabled style={{ background: "#e2e8f0", color: "#64748b", fontWeight: "bold", cursor: "not-allowed", fontFamily: "monospace" }} />
@@ -440,7 +441,6 @@ function TarjasManager() {
         </div>
       </div>
 
-      {/* BOTONES SECUENCIALES UNIFICADOS */}
       <div className="form-actions" style={{ justifyContent: "center", borderBottom: "1px solid #e2e8f0", paddingBottom: "25px", marginBottom: "25px" }}>
         <button className="btn-secondary" onClick={generarPrevisualizacion} style={{ fontSize: "16px", padding: "12px 30px" }}>
           👁️ Previsualizar Lote
@@ -453,30 +453,29 @@ function TarjasManager() {
         )}
       </div>
 
-      {/* VISTA PREVIA WEB */}
       {tarjas.length > 0 && (
         <div>
           <h4 style={{ marginBottom: "15px", color: "#1e293b" }}>Vista Previa ({tarjas.length} etiquetas listas para guardar)</h4>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "15px", maxHeight: "400px", overflowY: "auto", background: "#f8fafc", padding: "15px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
             {tarjas.map(t => (
-              <div key={t.codigo} style={{ background: "#fff", padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e1", width: "290px", display: "flex", flexDirection: "column", color: "#000" }}>
+              <div key={t.codigo} style={{ background: "#fff", padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e1", width: "320px", display: "flex", flexDirection: "column", color: "#000" }}>
                 
-                <div style={{ fontSize: "9px", fontWeight: "bold", display: "flex", justifyContent: "space-between", borderBottom: "2px solid #000", paddingBottom: "3px", marginBottom: "3px" }}>
+                <div style={{ fontSize: "11px", fontWeight: "bold", display: "flex", justifyContent: "space-between", borderBottom: "3px solid #000", paddingBottom: "3px", marginBottom: "3px" }}>
                   <span>{empresaActiva.nombre.substring(0,22)}...</span><span>{t.fechaStr}</span>
                 </div>
                 
-                <div style={{ fontSize: "10px", fontWeight: "bold", display: "flex", justifyContent: "space-between", borderBottom: "2px solid #000", paddingBottom: "3px", marginBottom: "3px" }}>
+                <div style={{ fontSize: "12px", fontWeight: "bold", display: "flex", justifyContent: "space-between", borderBottom: "3px solid #000", paddingBottom: "3px", marginBottom: "3px" }}>
                   <span>CUARTEL: {t.cuartel}</span><span>CORTE: {t.corte}</span>
                 </div>
 
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0" }}>
-                  <img src={t.qrUrl} alt="QR" style={{ width: "90px", height: "90px" }} />
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0" }}>
+                  <img src={t.qrUrl} alt="QR" style={{ width: "120px", height: "120px" }} />
                   <div style={{ textAlign: "right", paddingLeft: "10px" }}>
-                    <div style={{ fontWeight: "900", fontSize: "18px", letterSpacing: "0px", wordBreak: "break-all", lineHeight: "1.2" }}>{t.codigo}</div>
+                    <div style={{ fontWeight: "900", fontSize: "22px", letterSpacing: "0px", wordBreak: "break-all", lineHeight: "1.1" }}>{t.codigo}</div>
                   </div>
                 </div>
 
-                <div style={{ fontSize: "9px", fontWeight: "bold", display: "flex", justifyContent: "space-between", borderTop: "2px solid #000", paddingTop: "3px", marginTop: "3px" }}>
+                <div style={{ fontSize: "11px", fontWeight: "bold", display: "flex", justifyContent: "space-between", borderTop: "3px solid #000", paddingTop: "3px", marginTop: "3px" }}>
                   <span>{empresaActiva.fundo.substring(0,20)}</span><span>RUT: {empresaActiva.rut}</span>
                 </div>
 
@@ -486,7 +485,6 @@ function TarjasManager() {
         </div>
       )}
 
-      {/* TABLA DE HISTORIAL DE IMPRESIONES */}
       <div style={{ marginTop: "40px" }}>
         <h4 style={{ marginBottom: "15px", color: "#1e293b" }}>Auditoría: Historial de Impresiones Guardadas</h4>
         {historial.length === 0 ? (
