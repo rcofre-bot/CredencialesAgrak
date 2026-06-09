@@ -206,7 +206,7 @@ function TarjasManager() {
   
   const [tarjas, setTarjas] = useState([]);
   const [procesando, setProcesando] = useState(false);
-  const prefijo = " bin;AAON"; // FIJO, no modificable
+  const prefijo = "AAON"; // FIJO, no modificable
 
   const empresaActiva = EMPRESAS_TARJAS[empresaIdx];
 
