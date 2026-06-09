@@ -71,7 +71,7 @@ const EMPTY_CONTRACTOR_FORM = {
   rut: "", nombre: "", contacto: "", estado: "Activo",
 };
 
-// ─── Componente QR Canvas (Para Personal - SIN MODIFICAR) ─
+// ─── Componente QR Canvas (Para Personal) ───────────────
 function QRCard({ worker, logoUrl, onClose }) {
   const canvasRef = useRef(null);
 
@@ -186,16 +186,85 @@ function QRCard({ worker, logoUrl, onClose }) {
   );
 }
 
-// ─── MÓDULO: Tarjas de Cosecha (Zebra ZT230 - 100x70mm) ─
+// ─── NUEVO: MÓDULO MANTENEDOR DE CAMPOS Y CENTROS DE COSTO ───
+function CamposManager({ camposList, onAdd, onDelete, loading }) {
+  const [campo, setCampo] = useState("");
+  const [centro, setCentro] = useState("");
+
+  const handleAdd = () => {
+    if (!campo.trim() || !centro.trim()) {
+      alert("Debes ingresar el nombre del Campo y el Centro de Costo.");
+      return;
+    }
+    onAdd({ campo: campo.toUpperCase().trim(), centro: centro.toUpperCase().trim() });
+    setCentro(""); // Borramos solo el centro para que sea fácil agregar varios al mismo campo
+  };
+
+  return (
+    <div className="form-card" style={{ maxWidth: "800px", margin: "0 auto" }}>
+      <h3 className="form-title">Mantenedor: Campos y Centros de Costo</h3>
+      <p style={{ color: "#64748b", fontSize: "14px", marginBottom: "20px" }}>
+        Agrega aquí los fundos/campos y sus respectivos cuarteles o centros de costo para que aparezcan en el generador de Tarjas.
+      </p>
+
+      <div className="form-grid" style={{ marginBottom: "20px", background: "#f8fafc", padding: "20px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+        <div className="form-group">
+          <label>Nombre del Campo / Fundo</label>
+          <input value={campo} onChange={e => setCampo(e.target.value)} placeholder="Ej: CARMEN ROSA" />
+        </div>
+        <div className="form-group">
+          <label>Centro de Costo / Cuartel</label>
+          <input value={centro} onChange={e => setCentro(e.target.value)} placeholder="Ej: LOS NOGALES 1" />
+        </div>
+        <div className="form-group" style={{ gridColumn: "1 / -1", textAlign: "right" }}>
+          <button className="btn-primary" onClick={handleAdd} disabled={loading}>
+            {loading ? "Guardando..." : "➕ Agregar al Sistema"}
+          </button>
+        </div>
+      </div>
+
+      <div className="table-wrap">
+        <table className="workers-table">
+          <thead>
+            <tr>
+              <th>Campo / Fundo</th>
+              <th>Centro de Costo (Cuartel)</th>
+              <th style={{ width: "80px", textAlign: "center" }}>Acción</th>
+            </tr>
+          </thead>
+          <tbody>
+            {camposList.map(c => (
+              <tr key={c.id}>
+                <td style={{ fontWeight: "bold", color: "#0f172a" }}>{c.campo}</td>
+                <td>{c.centro}</td>
+                <td style={{ textAlign: "center" }}>
+                  <button className="btn-action btn-action-warn" onClick={() => onDelete(c.id)} title="Eliminar">🗑️</button>
+                </td>
+              </tr>
+            ))}
+            {camposList.length === 0 && (
+              <tr><td colSpan="3" style={{textAlign:"center", color:"#888"}}>No hay centros de costo registrados.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ─── MÓDULO: Tarjas de Cosecha (Zebra ZT230) ─
 const EMPRESAS_TARJAS = [
-  { id: 0, nombre: "AGRICOLA CONVENTO VIEJO SPA", rut: "76.843.510-2", fundo: "FUNDO CONVENTO VIEJO" },
-  { id: 1, nombre: "OTRA AGRICOLA EJEMPLO SPA", rut: "77.123.456-9", fundo: "FUNDO LOS NOGALES" }
+  { id: 0, nombre: "AGRICOLA CONVENTO VIEJO SPA", rut: "76.843.510-2" },
+  { id: 1, nombre: "OTRA AGRICOLA EJEMPLO SPA", rut: "77.123.456-9" }
 ];
 
-function TarjasManager() {
+function TarjasManager({ camposList }) {
   const [empresaIdx, setEmpresaIdx] = useState(0);
   const [fecha, setFecha] = useState(new Date().toISOString().split("T")[0]);
-  const [cuartel, setCuartel] = useState("");
+  
+  // Autocompletado de Campo y Centro
+  const [campoSeleccionado, setCampoSeleccionado] = useState("");
+  const [centroSeleccionado, setCentroSeleccionado] = useState("");
   const [corte, setCorte] = useState("");
   const [cantidad, setCantidad] = useState(10);
   
@@ -208,6 +277,10 @@ function TarjasManager() {
   const prefijo = "AAON"; 
 
   const empresaActiva = EMPRESAS_TARJAS[empresaIdx];
+
+  // Filtros para las listas desplegables
+  const camposUnicos = [...new Set(camposList.map(c => c.campo))];
+  const centrosFiltrados = camposList.filter(c => c.campo === campoSeleccionado).map(c => c.centro);
 
   const cargarHistorial = useCallback(async () => {
     try {
@@ -240,8 +313,8 @@ function TarjasManager() {
   }, [cargarHistorial]);
 
   const generarPrevisualizacion = async () => {
-    if (!cuartel || !corte) {
-      alert("Por favor, ingresa el Cuartel y el Corte antes de previsualizar.");
+    if (!campoSeleccionado || !centroSeleccionado || !corte) {
+      alert("Por favor, selecciona el Campo, Centro de Costo y Corte antes de previsualizar.");
       return;
     }
     const nuevasTarjas = [];
@@ -254,10 +327,10 @@ function TarjasManager() {
       const codigoQRData = `bin;${prefijo}${numStr}`;
       
       const qrDataUrl = await QRCode.toDataURL(codigoQRData, {
-        width: 400, margin: 0, color: { dark: "#000000", light: "#ffffff" }
+        width: 300, margin: 0, color: { dark: "#000000", light: "#ffffff" }
       });
 
-      nuevasTarjas.push({ codigo: codigoQRData, qrUrl: qrDataUrl, fechaStr, cuartel, corte });
+      nuevasTarjas.push({ codigo: codigoQRData, qrUrl: qrDataUrl, fechaStr, campo: campoSeleccionado, centroCosto: centroSeleccionado, corte });
     }
     setTarjas(nuevasTarjas);
   };
@@ -271,13 +344,12 @@ function TarjasManager() {
     setProcesando(true);
     const numFin = inicio + parseInt(cantidad) - 1;
 
-    // 1. Guardar historial en Firebase
     try {
       await addDoc(collection(db, "tarjas_history"), {
         empresa: empresaActiva.nombre,
-        fundo: empresaActiva.fundo,
+        campo: campoSeleccionado.toUpperCase(),
+        centroCosto: centroSeleccionado.toUpperCase(),
         fechaCosecha: fecha,
-        cuartel: cuartel.toUpperCase(),
         corte: corte.toUpperCase(),
         prefijo: prefijo,
         inicio: inicio,
@@ -292,7 +364,6 @@ function TarjasManager() {
       return;
     }
 
-    // 2. Construir ventana de impresión con MEDIDAS FÍSICAS ABSOLUTAS (mm y pt)
     const win = window.open("", "_blank");
     let html = `
       <!DOCTYPE html>
@@ -301,8 +372,6 @@ function TarjasManager() {
           <title>Impresión Zebra</title>
           <style>
             * { box-sizing: border-box; margin: 0; padding: 0; }
-            
-            /* Fuerza al navegador a usar exactamente el tamaño de tu rollo */
             @page { size: 100mm 70mm; margin: 0; padding: 0; }
             
             body { 
@@ -315,36 +384,28 @@ function TarjasManager() {
 
             @media print {
               html, body { width: 100mm; height: 70mm; margin: 0; padding: 0; overflow: hidden; }
-              .label { 
-                border: none !important; 
-                margin: 0 !important; 
-                page-break-after: always; 
-                page-break-inside: avoid; 
-              }
+              .label { border: none !important; margin: 0 !important; page-break-after: always; page-break-inside: avoid; }
             }
 
-            /* Contenedor exacto de 100x70mm */
             .label { 
-              width: 100mm; 
-              height: 70mm; 
+              width: 100mm; height: 70mm; 
               padding: 3mm 4mm; 
-              display: flex;
-              flex-direction: column;
-              justify-content: space-between;
-              overflow: hidden; 
-              background: #fff;
-              border: 1px dashed #ccc; 
+              display: flex; flex-direction: column; justify-content: space-between;
+              overflow: hidden; background: #fff; border: 1px dashed #ccc; 
             }
             
             .header { display: flex; justify-content: space-between; font-size: 8pt; font-weight: bold; border-bottom: 0.8mm solid #000; padding-bottom: 1mm; margin-bottom: 1mm;}
             .sub-header { display: flex; justify-content: space-between; font-size: 10pt; font-weight: bold; border-bottom: 0.8mm solid #000; padding-bottom: 1mm; }
             
-            .body { display: flex; align-items: center; justify-content: space-between; flex-grow: 1; padding: 2mm 0; height: 42mm;}
-            .qr-container { width: 42mm; height: 42mm; display: flex; align-items: center; justify-content: flex-start; }
+            .body { display: flex; align-items: center; justify-content: space-between; flex-grow: 1; padding: 2mm 0; height: 42mm; gap: 2mm;}
+            
+            /* QR Gigante */
+            .qr-container { width: 40mm; height: 40mm; display: flex; align-items: center; justify-content: flex-start; flex-shrink: 0;}
             .qr-img { width: 100%; height: 100%; object-fit: contain; }
             
-            .text-container { display: flex; align-items: center; justify-content: flex-end; width: 46mm; }
-            .text-code { font-size: 22pt; font-weight: 900; letter-spacing: -0.5pt; text-align: right; word-break: break-all; line-height: 1.1;}
+            /* Texto reducido a 16pt para que no se desborde */
+            .text-container { display: flex; align-items: center; justify-content: flex-end; flex-grow: 1; overflow: hidden;}
+            .text-code { font-size: 16pt; font-weight: 900; letter-spacing: 0; text-align: right; word-break: break-all; line-height: 1.1;}
             
             .footer { display: flex; justify-content: space-between; font-size: 8pt; font-weight: bold; border-top: 0.8mm solid #000; padding-top: 1mm; margin-top: 1mm;}
           </style>
@@ -357,11 +418,11 @@ function TarjasManager() {
         <div class="label">
           <div>
             <div class="header">
-              <span>${empresaActiva.nombre.substring(0, 25)}</span>
+              <span>${empresaActiva.nombre.substring(0, 30)}</span>
               <span>${t.fechaStr}</span>
             </div>
             <div class="sub-header">
-              <span>CUARTEL: ${t.cuartel}</span>
+              <span>C.COSTO: ${t.centroCosto.substring(0, 15)}</span>
               <span>CORTE: ${t.corte}</span>
             </div>
           </div>
@@ -372,7 +433,7 @@ function TarjasManager() {
             </div>
           </div>
           <div class="footer">
-            <span>${empresaActiva.fundo.substring(0, 20)}</span>
+            <span>CAMPO: ${t.campo.substring(0, 20)}</span>
             <span>RUT: ${empresaActiva.rut}</span>
           </div>
         </div>
@@ -384,7 +445,6 @@ function TarjasManager() {
     win.document.close();
     win.focus();
     
-    // 3. Limpiar y refrescar
     await cargarHistorial();
     setTarjas([]);
     setProcesando(false);
@@ -400,23 +460,54 @@ function TarjasManager() {
     <div className="form-card" style={{ maxWidth: "1000px", margin: "0 auto" }}>
       <h3 className="form-title">Generador de Tarjas de Cosecha (Zebra 100x70mm)</h3>
       <p style={{ color: "#64748b", fontSize: "14px", marginBottom: "20px" }}>
-        El número de folio se asigna automáticamente. Ingresa los datos, previsualiza la etiqueta y luego regístrala para imprimir.
+        El número de folio se asigna automáticamente. Puedes escribir en Campo y Centro de Costo para buscar rápido.
       </p>
 
       <div className="form-grid" style={{ marginBottom: "20px", background: "#f8fafc", padding: "20px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+        
+        {/* PARTE 1: DATOS MODIFICABLES */}
         <div className="form-group" style={{ gridColumn: "1 / -1" }}>
-          <label>Empresa y Fundo</label>
+          <label>Empresa Emisora</label>
           <select value={empresaIdx} onChange={e => setEmpresaIdx(e.target.value)} style={{ fontWeight: "bold", width: "100%", padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e1" }}>
             {EMPRESAS_TARJAS.map((emp, idx) => (
-              <option key={idx} value={idx}>{emp.nombre} - {emp.fundo}</option>
+              <option key={idx} value={idx}>{emp.nombre} - RUT: {emp.rut}</option>
             ))}
           </select>
         </div>
 
         <div className="form-group"><label>Fecha de Cosecha</label><input type="date" value={fecha} onChange={e => setFecha(e.target.value)} /></div>
-        <div className="form-group"><label>Cuartel *</label><input value={cuartel} onChange={e => setCuartel(e.target.value.toUpperCase())} placeholder="Ej: LOS NOGALES 1" /></div>
+        
+        <div className="form-group">
+          <label>Campo / Fundo *</label>
+          <input 
+            list="lista-campos" 
+            value={campoSeleccionado} 
+            onChange={e => { setCampoSeleccionado(e.target.value.toUpperCase()); setCentroSeleccionado(""); }} 
+            placeholder="Escribe para buscar campo..." 
+            autoComplete="off"
+          />
+          <datalist id="lista-campos">
+            {camposUnicos.map(c => <option key={c} value={c} />)}
+          </datalist>
+        </div>
+
+        <div className="form-group">
+          <label>C. Costo (Cuartel) *</label>
+          <input 
+            list="lista-centros" 
+            value={centroSeleccionado} 
+            onChange={e => setCentroSeleccionado(e.target.value.toUpperCase())} 
+            placeholder={campoSeleccionado ? "Escribe para buscar..." : "Selecciona un Campo primero"} 
+            autoComplete="off"
+          />
+          <datalist id="lista-centros">
+            {centrosFiltrados.map(c => <option key={c} value={c} />)}
+          </datalist>
+        </div>
+
         <div className="form-group"><label>Corte *</label><input value={corte} onChange={e => setCorte(e.target.value.toUpperCase())} placeholder="Ej: 1" /></div>
         
+        {/* PARTE 2: DATOS BLOQUEADOS (Correlativo) */}
         <div className="form-group">
           <label>Último Código Impreso</label>
           <input value={ultimoCodigo} disabled style={{ background: "#e2e8f0", color: "#64748b", fontWeight: "bold", cursor: "not-allowed", fontFamily: "monospace" }} />
@@ -447,6 +538,7 @@ function TarjasManager() {
         )}
       </div>
 
+      {/* VISTA PREVIA WEB */}
       {tarjas.length > 0 && (
         <div>
           <h4 style={{ marginBottom: "15px", color: "#1e293b" }}>Vista Previa ({tarjas.length} etiquetas listas para guardar)</h4>
@@ -454,23 +546,23 @@ function TarjasManager() {
             {tarjas.map(t => (
               <div key={t.codigo} style={{ background: "#fff", padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e1", width: "320px", display: "flex", flexDirection: "column", color: "#000" }}>
                 
-                <div style={{ fontSize: "11px", fontWeight: "bold", display: "flex", justifyContent: "space-between", borderBottom: "3px solid #000", paddingBottom: "3px", marginBottom: "3px" }}>
-                  <span>{empresaActiva.nombre.substring(0,25)}...</span><span>{t.fechaStr}</span>
+                <div style={{ fontSize: "11px", fontWeight: "bold", display: "flex", justifyContent: "space-between", borderBottom: "2px solid #000", paddingBottom: "3px", marginBottom: "3px" }}>
+                  <span>{empresaActiva.nombre.substring(0,25)}</span><span>{t.fechaStr}</span>
                 </div>
                 
-                <div style={{ fontSize: "12px", fontWeight: "bold", display: "flex", justifyContent: "space-between", borderBottom: "3px solid #000", paddingBottom: "3px", marginBottom: "3px" }}>
-                  <span>CUARTEL: {t.cuartel}</span><span>CORTE: {t.corte}</span>
+                <div style={{ fontSize: "12px", fontWeight: "bold", display: "flex", justifyContent: "space-between", borderBottom: "2px solid #000", paddingBottom: "3px", marginBottom: "3px" }}>
+                  <span>C.COSTO: {t.centroCosto.substring(0,15)}</span><span>CORTE: {t.corte}</span>
                 </div>
 
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0" }}>
-                  <img src={t.qrUrl} alt="QR" style={{ width: "120px", height: "120px" }} />
+                  <img src={t.qrUrl} alt="QR" style={{ width: "100px", height: "100px" }} />
                   <div style={{ textAlign: "right", paddingLeft: "10px" }}>
-                    <div style={{ fontWeight: "900", fontSize: "22px", letterSpacing: "0px", wordBreak: "break-all", lineHeight: "1.1" }}>{t.codigo}</div>
+                    <div style={{ fontWeight: "900", fontSize: "20px", letterSpacing: "0px", wordBreak: "break-all", lineHeight: "1.1" }}>{t.codigo}</div>
                   </div>
                 </div>
 
-                <div style={{ fontSize: "11px", fontWeight: "bold", display: "flex", justifyContent: "space-between", borderTop: "3px solid #000", paddingTop: "3px", marginTop: "3px" }}>
-                  <span>{empresaActiva.fundo.substring(0,20)}</span><span>RUT: {empresaActiva.rut}</span>
+                <div style={{ fontSize: "11px", fontWeight: "bold", display: "flex", justifyContent: "space-between", borderTop: "2px solid #000", paddingTop: "3px", marginTop: "3px" }}>
+                  <span>CAMPO: {t.campo.substring(0,20)}</span><span>RUT: {empresaActiva.rut}</span>
                 </div>
 
               </div>
@@ -479,6 +571,7 @@ function TarjasManager() {
         </div>
       )}
 
+      {/* TABLA DE HISTORIAL DE IMPRESIONES */}
       <div style={{ marginTop: "40px" }}>
         <h4 style={{ marginBottom: "15px", color: "#1e293b" }}>Auditoría: Historial de Impresiones Guardadas</h4>
         {historial.length === 0 ? (
@@ -489,7 +582,7 @@ function TarjasManager() {
               <thead>
                 <tr>
                   <th>Fecha Emisión</th>
-                  <th>Empresa / Cuartel / Corte</th>
+                  <th>Empresa / Campo / C.Costo</th>
                   <th>Rango Impreso</th>
                   <th style={{textAlign: "center"}}>Cantidad</th>
                 </tr>
@@ -502,7 +595,7 @@ function TarjasManager() {
                     </td>
                     <td>
                       <div style={{fontWeight: "bold"}}>{lote.empresa}</div>
-                      <div style={{fontSize: "12px", color: "#64748b"}}>Cuartel: {lote.cuartel} | Corte: {lote.corte}</div>
+                      <div style={{fontSize: "12px", color: "#64748b"}}>Campo: {lote.campo} | C.Costo: {lote.centroCosto}</div>
                     </td>
                     <td className="cell-mono" style={{fontWeight: "600"}}>
                       bin;{lote.prefijo}{String(lote.inicio).padStart(4, '0')} - bin;{lote.prefijo}{String(lote.fin).padStart(4, '0')}
@@ -636,139 +729,16 @@ function CredentialsManager({ credentialsList, onBulkUpload, onDelete, loading }
   );
 }
 
-// ─── Formulario de Trabajador ───────────────────────────
-function WorkerForm({ onSave, onCancel, initial, contractorsList, credentialsList }) {
-  const [form, setForm] = useState(initial || EMPTY_WORKER_FORM);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-
-  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-  const handleRutChange = (e) => set("rut", formatRut(e.target.value));
-
-  const availableCount = credentialsList?.filter(c => c.estado === "Disponible").length || 0;
-
-  const handleSubmit = async () => {
-    if (!form.rut || !form.nombre || !form.apellido || !form.fechaIngreso) {
-      setError("Completa los campos obligatorios: RUT, Nombre, Apellido y Fecha de Ingreso.");
-      return;
-    }
-    if (!validateRut(form.rut)) {
-      setError("El RUT ingresado no es válido. Verifica que esté correcto.");
-      return;
-    }
-
-    setError(""); setLoading(true);
-    try { 
-      await onSave(form); 
-    } catch (e) { 
-      setError(e.message); 
-    }
-    setLoading(false);
-  };
-
-  return (
-    <div className="form-card">
-      <h3 className="form-title">{initial ? "Editar Trabajador" : "Registrar Trabajador"}</h3>
-      {error && <div className="alert-error">{error}</div>}
-      <div className="form-grid">
-        <div className="form-group"><label>RUT *</label><input value={form.rut} onChange={handleRutChange} placeholder="12.345.678-9" maxLength={12} /></div>
-        <div className="form-group"><label>Nombre *</label><input value={form.nombre} onChange={(e) => set("nombre", e.target.value)} placeholder="Nombre" /></div>
-        <div className="form-group"><label>Apellido *</label><input value={form.apellido} onChange={(e) => set("apellido", e.target.value)} placeholder="Apellido" /></div>
-        
-        <div className="form-group">
-          <label>Contratista (Empresa o Contacto)</label>
-          <input 
-            list="lista-contratistas" 
-            value={form.contratista} 
-            onChange={(e) => set("contratista", e.target.value)} 
-            placeholder="Escribe el nombre o contacto..."
-            autoComplete="off"
-          />
-          <datalist id="lista-contratistas">
-            {contractorsList.filter(c => c.estado === "Activo").map((c) => (
-              <option key={c.id} value={`${c.nombre}${c.contacto ? ` - Contacto: ${c.contacto}` : ""}`} />
-            ))}
-          </datalist>
-        </div>
-
-        <div className="form-group"><label>Fecha de Ingreso *</label><input type="date" value={form.fechaIngreso} onChange={(e) => set("fechaIngreso", e.target.value)} /></div>
-        <div className="form-group"><label>Estado</label><select value={form.estado} onChange={(e) => set("estado", e.target.value)}><option value="Activo">Activo</option><option value="Inactivo">Inactivo</option></select></div>
-        
-        <div className="form-group" style={{ gridColumn: "1 / -1", background: "#f8fafc", padding: "15px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
-          <label style={{ fontSize: "14px", fontWeight: "700", color: "#0f172a", marginBottom: "8px", display: "block" }}>
-            🪪 Credencial Virtual (Asignación Automática)
-          </label>
-          
-          {initial ? (
-            <p style={{ margin: 0, fontSize: "14px", color: "#475569" }}>
-              ✅ Este perfil ya tiene su QR guardado. (Si el estado cambia a Inactivo, la credencial se liberará automáticamente).
-            </p>
-          ) : (
-            <p style={{ margin: 0, fontSize: "14px", color: availableCount > 0 ? "#166534" : "#dc2626" }}>
-              {availableCount > 0 
-                ? `✨ Al guardar, se le asignará automáticamente el siguiente folio disponible (Quedan ${availableCount}).` 
-                : `⚠️ No quedan folios precargados. El sistema generará un folio VIRTUAL de emergencia.`}
-            </p>
-          )}
-        </div>
-
-      </div>
-      <div className="form-actions">
-        <button className="btn-secondary" onClick={onCancel} disabled={loading}>Cancelar</button>
-        <button className="btn-primary" onClick={handleSubmit} disabled={loading}>{loading ? "Guardando…" : initial ? "Actualizar" : "Registrar y Asignar QR"}</button>
-      </div>
-    </div>
-  );
-}
-
-// ─── Formulario de Contratista ──────────────────────────
-function ContractorForm({ onSave, onCancel, initial }) {
-  const [form, setForm] = useState(initial || EMPTY_CONTRACTOR_FORM);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-
-  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-  const handleRutChange = (e) => set("rut", formatRut(e.target.value));
-
-  const handleSubmit = async () => {
-    if (!form.rut || !form.nombre) {
-      setError("Completa los campos obligatorios: RUT y Nombre de Empresa.");
-      return;
-    }
-    if (!validateRut(form.rut)) {
-      setError("El RUT de la empresa no es válido. Verifica que esté correcto.");
-      return;
-    }
-    setError(""); setLoading(true);
-    try { await onSave(form); } catch (e) { setError(e.message); }
-    setLoading(false);
-  };
-
-  return (
-    <div className="form-card">
-      <h3 className="form-title">{initial ? "Editar Contratista" : "Registrar Contratista"}</h3>
-      {error && <div className="alert-error">{error}</div>}
-      <div className="form-grid">
-        <div className="form-group"><label>RUT Empresa *</label><input value={form.rut} onChange={handleRutChange} placeholder="76.123.456-7" maxLength={12} /></div>
-        <div className="form-group"><label>Nombre Empresa *</label><input value={form.nombre} onChange={(e) => set("nombre", e.target.value)} placeholder="Ej: Constructora Alfa" /></div>
-        <div className="form-group"><label>Contacto (Opcional)</label><input value={form.contacto} onChange={(e) => set("contacto", e.target.value)} placeholder="Nombre o Teléfono" /></div>
-        <div className="form-group"><label>Estado</label><select value={form.estado} onChange={(e) => set("estado", e.target.value)}><option value="Activo">Activo</option><option value="Inactivo">Inactivo</option></select></div>
-      </div>
-      <div className="form-actions">
-        <button className="btn-secondary" onClick={onCancel} disabled={loading}>Cancelar</button>
-        <button className="btn-primary" onClick={handleSubmit} disabled={loading}>{loading ? "Guardando…" : "Registrar Contratista"}</button>
-      </div>
-    </div>
-  );
-}
-
 // ─── App Principal ───────────────────────────────────────
 export default function App() {
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+  
   const [workers, setWorkers] = useState([]);
   const [contractors, setContractors] = useState([]);
   const [credentials, setCredentials] = useState([]);
+  const [camposList, setCamposList] = useState([]); // Nuevo estado para Campos
+  
   const [loadingData, setLoadingData] = useState(false);
   const [view, setView] = useState("workers_list"); 
   const [editTarget, setEditTarget] = useState(null);
@@ -789,12 +759,14 @@ export default function App() {
       const qw = query(collection(db, "workers"), orderBy("creadoEn", "desc"));
       const qc = query(collection(db, "contractors"), orderBy("creadoEn", "desc"));
       const qcred = query(collection(db, "credentials"), orderBy("creadoEn", "desc"));
+      const qcampos = query(collection(db, "campos"), orderBy("creadoEn", "desc")); // Cargamos los campos
 
-      const [snapW, snapC, snapCred] = await Promise.all([getDocs(qw), getDocs(qc), getDocs(qcred)]);
+      const [snapW, snapC, snapCred, snapCampos] = await Promise.all([getDocs(qw), getDocs(qc), getDocs(qcred), getDocs(qcampos)]);
       
       setWorkers(snapW.docs.map(d => ({ id: d.id, ...d.data() })));
       setContractors(snapC.docs.map(d => ({ id: d.id, ...d.data() })));
       setCredentials(snapCred.docs.map(d => ({ id: d.id, ...d.data() })));
+      setCamposList(snapCampos.docs.map(d => ({ id: d.id, ...d.data() })));
     } catch (e) {
       console.error(e);
     }
@@ -804,13 +776,31 @@ export default function App() {
   useEffect(() => { if (user) loadData(); }, [user, loadData]);
 
   const handleLogin = async () => { try { await signInWithPopup(auth, googleProvider); } catch (e) { alert("Error: " + e.message); } };
-  const handleLogout = async () => { await signOut(auth); setWorkers([]); setContractors([]); setCredentials([]); setView("workers_list"); };
+  const handleLogout = async () => { await signOut(auth); setWorkers([]); setContractors([]); setCredentials([]); setCamposList([]); setView("workers_list"); };
   const handleLogoUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (ev) => { localStorage.setItem("logoUrl", ev.target.result); setLogoUrl(ev.target.result); };
     reader.readAsDataURL(file);
+  };
+
+  // Funciones para Mantenedor de Campos
+  const handleAddCampo = async (data) => {
+    setLoadingData(true);
+    try {
+      await addDoc(collection(db, "campos"), { ...data, creadoEn: serverTimestamp() });
+      await loadData();
+    } catch (error) { alert("Error al guardar: " + error.message); }
+    setLoadingData(false);
+  };
+
+  const handleDeleteCampo = async (id) => {
+    if (!window.confirm("¿Seguro que deseas eliminar este Centro de Costo?")) return;
+    setLoadingData(true);
+    await deleteDoc(doc(db, "campos", id));
+    await loadData();
+    setLoadingData(false);
   };
 
   const handleBulkUploadCredentials = async (credsArray) => {
@@ -1006,12 +996,15 @@ export default function App() {
           <button onClick={() => { setView("contractors_list"); setSearch(""); setEditTarget(null); }} style={{ padding: "10px 20px", border: "none", borderRadius: "6px", backgroundColor: view.includes("contractors") ? "#101c38" : "#f1f5f9", color: view.includes("contractors") ? "#ffffff" : "#475569", cursor: "pointer", fontWeight: "600", fontSize: "14px", transition: "all 0.2s" }}>🏢 Contratistas</button>
           <button onClick={() => { setView("credentials_list"); setSearch(""); setEditTarget(null); }} style={{ padding: "10px 20px", border: "none", borderRadius: "6px", backgroundColor: view === "credentials_list" ? "#101c38" : "#f1f5f9", color: view === "credentials_list" ? "#ffffff" : "#475569", cursor: "pointer", fontWeight: "600", fontSize: "14px", transition: "all 0.2s" }}>🪪 Gestión Credenciales</button>
           <button onClick={() => { setView("tarjas"); setSearch(""); setEditTarget(null); }} style={{ padding: "10px 20px", border: "none", borderRadius: "6px", backgroundColor: view === "tarjas" ? "#16a34a" : "#f1f5f9", color: view === "tarjas" ? "#ffffff" : "#475569", cursor: "pointer", fontWeight: "600", fontSize: "14px", transition: "all 0.2s" }}>🏷️ Tarjas de Cosecha</button>
+          {/* NUEVO BOTÓN PARA MANTENEDOR DE CAMPOS */}
+          <button onClick={() => { setView("campos"); setSearch(""); setEditTarget(null); }} style={{ padding: "10px 20px", border: "none", borderRadius: "6px", backgroundColor: view === "campos" ? "#b45309" : "#f1f5f9", color: view === "campos" ? "#ffffff" : "#475569", cursor: "pointer", fontWeight: "600", fontSize: "14px", transition: "all 0.2s" }}>📍 Campos y C. Costo</button>
         </div>
 
         {view === "workers_form" && <WorkerForm onSave={handleSaveWorker} onCancel={() => { setView("workers_list"); setEditTarget(null); }} initial={editTarget} contractorsList={contractors} credentialsList={credentials} />}
         {view === "contractors_form" && <ContractorForm onSave={handleSaveContractor} onCancel={() => { setView("contractors_list"); setEditTarget(null); }} initial={editTarget} />}
         {view === "credentials_list" && <CredentialsManager credentialsList={credentials} onBulkUpload={handleBulkUploadCredentials} onDelete={handleDeleteCredential} loading={loadingData} />}
-        {view === "tarjas" && <TarjasManager />}
+        {view === "campos" && <CamposManager camposList={camposList} onAdd={handleAddCampo} onDelete={handleDeleteCampo} loading={loadingData} />}
+        {view === "tarjas" && <TarjasManager camposList={camposList} />}
 
         {(view === "workers_list" || view === "contractors_list") && (
           <>
