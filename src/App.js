@@ -204,7 +204,7 @@ function TarjasManager() {
   const [inicio, setInicio] = useState(1);
   const [ultimoCodigo, setUltimoCodigo] = useState("Cargando...");
   const [procesando, setProcesando] = useState(false);
-  const prefijo = "bin;AAON0001"; // FIJO, no modificable
+  const prefijo = "bin;AAON"; // FIJO, no modificable
 
   const empresaActiva = EMPRESAS_TARJAS[empresaIdx];
 
@@ -230,7 +230,7 @@ function TarjasManager() {
       
     } catch (e) {
       console.error("Error al cargar historial de tarjas:", e);
-      setUltimoCodigo("Error al cargar");
+      setUltimoCodigo("Pendiente");
     }
   }, []);
 
