@@ -204,7 +204,7 @@ function TarjasManager() {
   const [inicio, setInicio] = useState(1);
   const [ultimoCodigo, setUltimoCodigo] = useState("Cargando...");
   const [procesando, setProcesando] = useState(false);
-  const prefijo = "bin;AAON"; // FIJO, no modificable
+  const prefijo = "AAON"; // FIJO, no modificable
 
   const empresaActiva = EMPRESAS_TARJAS[empresaIdx];
 
@@ -230,7 +230,7 @@ function TarjasManager() {
       
     } catch (e) {
       console.error("Error al cargar historial de tarjas:", e);
-      setUltimoCodigo("Pendiente");
+      setUltimoCodigo("Error al cargar");
     }
   }, []);
 
@@ -261,7 +261,6 @@ function TarjasManager() {
       const numActual = inicio + i;
       const numStr = String(numActual).padStart(4, '0');
       
-      // Código interno del QR exacto: bin;AAON0001
       const codigoQRData = `bin;${prefijo}${numStr}`;
       
       const qrDataUrl = await QRCode.toDataURL(codigoQRData, {
@@ -271,7 +270,7 @@ function TarjasManager() {
       tarjas.push({ codigo: codigoQRData, prefijo, sufijo: numStr, qrUrl: qrDataUrl, fechaStr, cuartel, corte });
     }
 
-    // 2. Imprimir
+    // 2. Imprimir (ESTILOS ZEBRA STRICT)
     const win = window.open("", "_blank");
     let html = `
       <!DOCTYPE html>
@@ -279,39 +278,58 @@ function TarjasManager() {
         <head>
           <title>Impresión Zebra - Tarjas</title>
           <style>
-            @page { size: 100mm 70mm; margin: 0; }
-            @media print {
-              body { margin: 0; padding: 0; background: #fff; }
-              * { -webkit-print-color-adjust: exact !important; color-adjust: exact !important; }
-            }
-            body { font-family: 'Arial', sans-serif; background: #f1f5f9; display: flex; flex-direction: column; align-items: center; padding: 20px;}
+            /* Zebra Strict Reset */
+            * { box-sizing: border-box; margin: 0; padding: 0; }
+            @page { size: 100mm 70mm; margin: 0; padding: 0; }
             
+            body { 
+              font-family: 'Arial', sans-serif; 
+              background: #fff; 
+              color: #000; 
+              width: 100mm;
+            }
+
+            /* Pantalla (Preview) */
+            @media screen {
+              body { background: #f1f5f9; padding: 20px; display: flex; flex-direction: column; align-items: center; width: auto; }
+              .label { margin-bottom: 20px; border: 1px dashed #ccc !important; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+            }
+
+            /* Zebra Print */
+            @media print {
+              body { display: block; }
+              .label { 
+                border: none !important; 
+                margin: 0 !important; 
+                page-break-after: always; 
+                page-break-inside: avoid; 
+              }
+            }
+
+            /* Etiqueta 100x70 Exacta */
             .label { 
-              width: 100mm; height: 70mm; 
-              background: #fff;
-              page-break-after: always; 
-              color: #000;
-              box-sizing: border-box;
-              padding: 5mm;
+              width: 100mm; 
+              height: 70mm; 
+              padding: 3mm 4mm; /* Margen de seguridad interno */
               display: flex;
               flex-direction: column;
               justify-content: space-between;
-              margin-bottom: 10px;
-              border: 1px dashed #ccc;
+              overflow: hidden; /* Corta cualquier desborde */
+              background: #fff;
             }
-            .label:last-child { page-break-after: auto; margin-bottom: 0; border-bottom: none; }
             
-            .header { display: flex; justify-content: space-between; font-size: 11px; font-weight: bold; border-bottom: 2px solid #000; padding-bottom: 3px;}
-            .sub-header { display: flex; justify-content: space-between; font-size: 11px; font-weight: bold; border-bottom: 2px solid #000; padding: 3px 0; margin-bottom: 1mm;}
+            .header { display: flex; justify-content: space-between; font-size: 10px; font-weight: bold; border-bottom: 2px solid #000; padding-bottom: 2px; margin-bottom: 2px;}
+            .sub-header { display: flex; justify-content: space-between; font-size: 11px; font-weight: bold; border-bottom: 2px solid #000; padding-bottom: 2px; }
             
-            .body { display: flex; align-items: center; justify-content: space-between; flex-grow: 1; padding: 1mm 0; }
-            .qr-container { width: 42mm; height: 42mm; display: flex; align-items: center; justify-content: center; }
+            .body { display: flex; align-items: center; justify-content: space-between; flex-grow: 1; padding: 1mm 0;}
+            .qr-container { width: 38mm; height: 38mm; display: flex; align-items: center; justify-content: flex-start; }
             .qr-img { width: 100%; height: 100%; object-fit: contain; }
-            .text-container { display: flex; flex-direction: column; align-items: flex-end; justify-content: center; width: 100%; }
-            .text-prefix { font-size: 30px; font-weight: 900; letter-spacing: 2px; line-height: 1; }
-            .text-suffix { font-size: 40px; font-weight: 900; letter-spacing: 2px; line-height: 1; margin-top: 5px; }
             
-            .footer { display: flex; justify-content: space-between; font-size: 11px; font-weight: bold; border-top: 2px solid #000; padding-top: 3px;}
+            .text-container { display: flex; flex-direction: column; align-items: flex-end; justify-content: center; width: 100%; }
+            .text-prefix { font-size: 26px; font-weight: 900; letter-spacing: 1px; line-height: 1; }
+            .text-suffix { font-size: 36px; font-weight: 900; letter-spacing: 1px; line-height: 1; margin-top: 4px; }
+            
+            .footer { display: flex; justify-content: space-between; font-size: 10px; font-weight: bold; border-top: 2px solid #000; padding-top: 2px; margin-top: 2px;}
           </style>
         </head>
         <body>
@@ -320,13 +338,15 @@ function TarjasManager() {
     tarjas.forEach(t => {
       html += `
         <div class="label">
-          <div class="header">
-            <span>${empresaActiva.nombre}</span>
-            <span>${t.fechaStr}</span>
-          </div>
-          <div class="sub-header">
-            <span>CUARTEL: ${t.cuartel}</span>
-            <span>CORTE: ${t.corte}</span>
+          <div>
+            <div class="header">
+              <span>${empresaActiva.nombre}</span>
+              <span>${t.fechaStr}</span>
+            </div>
+            <div class="sub-header">
+              <span>CUARTEL: ${t.cuartel}</span>
+              <span>CORTE: ${t.corte}</span>
+            </div>
           </div>
           <div class="body">
             <div class="qr-container"><img class="qr-img" src="${t.qrUrl}" alt="QR" /></div>
@@ -367,7 +387,7 @@ function TarjasManager() {
     }
 
     // 4. Actualizar estado e imprimir
-    await cargarHistorial(); // Refresca la tabla y el número de inicio
+    await cargarHistorial();
     setProcesando(false);
     
     setTimeout(() => { win.print(); }, 500);
