@@ -189,67 +189,149 @@ function QRCard({ worker, logoUrl, onClose }) {
 }
 
 // ─── NUEVO: MÓDULO MANTENEDOR DE CAMPOS Y CENTROS DE COSTO ───
-function CamposManager({ camposList, onAdd, onDelete, loading }) {
+function CamposManager({ camposList, onAdd, onBulkUpload, onDelete, loading }) {
   const [campo, setCampo] = useState("");
   const [centro, setCentro] = useState("");
+  const [descripcion, setDescripcion] = useState("");
+  const [bulkText, setBulkText] = useState("");
 
   const handleAdd = () => {
     if (!campo.trim() || !centro.trim()) {
       alert("Debes ingresar el nombre del Campo y el Centro de Costo.");
       return;
     }
-    onAdd({ campo: campo.toUpperCase().trim(), centro: centro.toUpperCase().trim() });
+    onAdd({ 
+      campo: campo.toUpperCase().trim(), 
+      centro: centro.toUpperCase().trim(),
+      descripcion: descripcion.trim()
+    });
     setCentro(""); 
+    setDescripcion("");
+  };
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => setBulkText(ev.target.result);
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
+  const handleUploadBulk = () => {
+    if (!bulkText.trim()) return;
+    const lines = bulkText.split("\n").map(l => l.trim()).filter(l => l !== "");
+    const nuevosCampos = [];
+
+    for (let line of lines) {
+      // Divide por comas o tabulaciones (útil al copiar de Excel)
+      const parts = line.split(/\t|,/);
+      if (parts.length >= 2) {
+        let c = parts[0].trim().replace(/^"|"$/g, '').toUpperCase();
+        let cc = parts[1].trim().replace(/^"|"$/g, '').toUpperCase();
+        // Si hay descripción, juntamos el resto
+        let desc = parts.length > 2 ? parts.slice(2).join(" ").trim().replace(/^"|"$/g, '') : "";
+
+        if (c && cc) {
+          nuevosCampos.push({ campo: c, centro: cc, descripcion: desc });
+        }
+      }
+    }
+
+    if (nuevosCampos.length === 0) {
+      alert("El formato es incorrecto. Asegúrate de usar 'Campo, Centro, Descripción' en cada línea.");
+      return;
+    }
+
+    onBulkUpload(nuevosCampos);
+    setBulkText("");
   };
 
   return (
-    <div className="form-card" style={{ maxWidth: "800px", margin: "0 auto" }}>
-      <h3 className="form-title">Mantenedor: Campos y Centros de Costo</h3>
-      <p style={{ color: "#64748b", fontSize: "14px", marginBottom: "20px" }}>
-        Agrega aquí los fundos/campos y sus respectivos cuarteles o centros de costo para que aparezcan en el generador de Tarjas.
-      </p>
-
-      <div className="form-grid" style={{ marginBottom: "20px", background: "#f8fafc", padding: "20px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
-        <div className="form-group">
-          <label>Nombre del Campo / Fundo</label>
-          <input value={campo} onChange={e => setCampo(e.target.value)} placeholder="Ej: CARMEN ROSA" />
-        </div>
-        <div className="form-group">
-          <label>Centro de Costo / Cuartel</label>
-          <input value={centro} onChange={e => setCentro(e.target.value)} placeholder="Ej: LOS NOGALES 1" />
-        </div>
-        <div className="form-group" style={{ gridColumn: "1 / -1", textAlign: "right" }}>
-          <button className="btn-primary" onClick={handleAdd} disabled={loading}>
-            {loading ? "Guardando..." : "➕ Agregar al Sistema"}
-          </button>
+    <div style={{ maxWidth: "900px", margin: "0 auto", display: "flex", flexDirection: "column", gap: "20px" }}>
+      
+      {/* SECCIÓN 1: AGREGAR INDIVIDUAL */}
+      <div className="form-card">
+        <h3 className="form-title">Agregar Campo / Centro de Costo</h3>
+        <div className="form-grid" style={{ marginBottom: "10px", background: "#f8fafc", padding: "20px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+          <div className="form-group">
+            <label>Nombre del Campo / Fundo *</label>
+            <input value={campo} onChange={e => setCampo(e.target.value)} placeholder="Ej: CARMEN ROSA" />
+          </div>
+          <div className="form-group">
+            <label>Centro de Costo / Cuartel *</label>
+            <input value={centro} onChange={e => setCentro(e.target.value)} placeholder="Ej: LOS NOGALES 1" />
+          </div>
+          <div className="form-group" style={{ gridColumn: "1 / -1" }}>
+            <label>Descripción (Opcional)</label>
+            <input value={descripcion} onChange={e => setDescripcion(e.target.value)} placeholder="Ej: Sector norte riego goteo..." />
+          </div>
+          <div className="form-group" style={{ gridColumn: "1 / -1", textAlign: "right" }}>
+            <button className="btn-primary" onClick={handleAdd} disabled={loading}>
+              {loading ? "Guardando..." : "➕ Agregar Manualmente"}
+            </button>
+          </div>
         </div>
       </div>
 
-      <div className="table-wrap">
-        <table className="workers-table">
-          <thead>
-            <tr>
-              <th>Campo / Fundo</th>
-              <th>Centro de Costo (Cuartel)</th>
-              <th style={{ width: "80px", textAlign: "center" }}>Acción</th>
-            </tr>
-          </thead>
-          <tbody>
-            {camposList.map(c => (
-              <tr key={c.id}>
-                <td style={{ fontWeight: "bold", color: "#0f172a" }}>{c.campo}</td>
-                <td>{c.centro}</td>
-                <td style={{ textAlign: "center" }}>
-                  <button className="btn-action btn-action-warn" onClick={() => onDelete(c.id)} title="Eliminar">🗑️</button>
-                </td>
+      {/* SECCIÓN 2: CARGA MASIVA */}
+      <div className="form-card">
+        <h3 className="form-title">Carga Masiva de Centros de Costo (Excel)</h3>
+        <p style={{ color: "#64748b", fontSize: "14px", marginBottom: "15px" }}>
+          Pega directamente las columnas desde Excel, o usa el formato: <code>Campo, Centro de Costo, Descripción</code>
+        </p>
+        
+        <div style={{ marginBottom: "15px" }}>
+          <label className="btn-secondary" style={{ cursor: "pointer", display: "inline-block" }}>
+            📁 Subir Archivo (.csv / .txt)
+            <input type="file" accept=".csv, .txt" onChange={handleFileUpload} style={{ display: "none" }} />
+          </label>
+        </div>
+
+        <textarea
+          rows={6}
+          value={bulkText}
+          onChange={(e) => setBulkText(e.target.value)}
+          placeholder="CARMEN ROSA, NOGALES 1, Sector Norte&#10;CARMEN ROSA, NOGALES 2, Sector Sur&#10;FUNDO ALFA, CUARTEL B, "
+          style={{ width: "100%", padding: "12px", borderRadius: "8px", border: "1px solid #cbd5e1", marginBottom: "15px", fontFamily: "monospace", whiteSpace: "pre" }}
+        />
+        <button className="btn-primary" onClick={handleUploadBulk} disabled={loading || !bulkText.trim()}>
+          {loading ? "Cargando..." : "📤 Procesar Carga Masiva"}
+        </button>
+      </div>
+
+      {/* SECCIÓN 3: LISTADO EXISTENTE */}
+      <div className="form-card">
+        <h3 className="form-title">Centros de Costo Registrados ({camposList.length})</h3>
+        <div className="table-wrap">
+          <table className="workers-table">
+            <thead>
+              <tr>
+                <th>Campo / Fundo</th>
+                <th>Centro de Costo (Cuartel)</th>
+                <th>Descripción</th>
+                <th style={{ width: "80px", textAlign: "center" }}>Acción</th>
               </tr>
-            ))}
-            {camposList.length === 0 && (
-              <tr><td colSpan="3" style={{textAlign:"center", color:"#888"}}>No hay centros de costo registrados.</td></tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {camposList.map(c => (
+                <tr key={c.id}>
+                  <td style={{ fontWeight: "bold", color: "#0f172a" }}>{c.campo}</td>
+                  <td>{c.centro}</td>
+                  <td style={{ color: "#64748b", fontSize: "13px" }}>{c.descripcion || "—"}</td>
+                  <td style={{ textAlign: "center" }}>
+                    <button className="btn-action btn-action-warn" onClick={() => onDelete(c.id)} title="Eliminar">🗑️</button>
+                  </td>
+                </tr>
+              ))}
+              {camposList.length === 0 && (
+                <tr><td colSpan="4" style={{textAlign:"center", color:"#888"}}>No hay centros de costo registrados.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
+      
     </div>
   );
 }
@@ -264,6 +346,7 @@ function TarjasManager({ camposList }) {
   const [empresaIdx, setEmpresaIdx] = useState(0);
   const [fecha, setFecha] = useState(new Date().toISOString().split("T")[0]);
   
+  // Autocompletado de Campo y Centro
   const [campoSeleccionado, setCampoSeleccionado] = useState("");
   const [centroSeleccionado, setCentroSeleccionado] = useState("");
   const [corte, setCorte] = useState("");
@@ -279,6 +362,7 @@ function TarjasManager({ camposList }) {
 
   const empresaActiva = EMPRESAS_TARJAS[empresaIdx] || EMPRESAS_TARJAS[0];
 
+  // Filtros para las listas desplegables
   const camposUnicos = [...new Set(camposList.map(c => c.campo))];
   const centrosFiltrados = camposList.filter(c => c.campo === campoSeleccionado).map(c => c.centro);
 
@@ -412,9 +496,11 @@ function TarjasManager({ camposList }) {
             
             .body { display: flex; align-items: center; justify-content: space-between; flex-grow: 1; padding: 2mm 0; height: 42mm; gap: 2mm;}
             
+            /* QR Gigante */
             .qr-container { width: 40mm; height: 40mm; display: flex; align-items: center; justify-content: flex-start; flex-shrink: 0;}
             .qr-img { width: 100%; height: 100%; object-fit: contain; }
             
+            /* Texto reducido a 16pt para que no se desborde */
             .text-container { display: flex; align-items: center; justify-content: flex-end; flex-grow: 1; overflow: hidden;}
             .text-code { font-size: 16pt; font-weight: 900; letter-spacing: 0; text-align: right; word-break: break-all; line-height: 1.1;}
             
@@ -557,11 +643,11 @@ function TarjasManager({ camposList }) {
             {tarjas.map(t => (
               <div key={t.codigo} style={{ background: "#fff", padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e1", width: "320px", display: "flex", flexDirection: "column", color: "#000" }}>
                 
-                <div style={{ fontSize: "11px", fontWeight: "bold", display: "flex", justifyContent: "space-between", borderBottom: "2px solid #000", paddingBottom: "3px", marginBottom: "3px" }}>
+                <div style={{ fontSize: "11px", fontWeight: "bold", display: "flex", justifyContent: "space-between", borderBottom: "3px solid #000", paddingBottom: "3px", marginBottom: "3px" }}>
                   <span>{empresaActiva.nombre.substring(0,25)}</span><span>{t.fechaStr}</span>
                 </div>
                 
-                <div style={{ fontSize: "12px", fontWeight: "bold", display: "flex", justifyContent: "space-between", borderBottom: "2px solid #000", paddingBottom: "3px", marginBottom: "3px" }}>
+                <div style={{ fontSize: "12px", fontWeight: "bold", display: "flex", justifyContent: "space-between", borderBottom: "3px solid #000", paddingBottom: "3px", marginBottom: "3px" }}>
                   <span>C.COSTO: {t.centroCosto.substring(0,15)}</span><span>CORTE: {t.corte}</span>
                 </div>
 
@@ -572,7 +658,7 @@ function TarjasManager({ camposList }) {
                   </div>
                 </div>
 
-                <div style={{ fontSize: "11px", fontWeight: "bold", display: "flex", justifyContent: "space-between", borderTop: "2px solid #000", paddingTop: "3px", marginTop: "3px" }}>
+                <div style={{ fontSize: "11px", fontWeight: "bold", display: "flex", justifyContent: "space-between", borderTop: "3px solid #000", paddingTop: "3px", marginTop: "3px" }}>
                   <span>CAMPO: {t.campo.substring(0,20)}</span><span>RUT: {empresaActiva.rut}</span>
                 </div>
 
@@ -893,7 +979,6 @@ export default function App() {
   const loadData = useCallback(async () => {
     setLoadingData(true);
     
-    // Función auxiliar segura para no bloquear la app si falta una regla de Firebase
     const fetchSafe = async (q) => {
       try {
         const snap = await getDocs(q);
@@ -909,7 +994,6 @@ export default function App() {
     const qcred = query(collection(db, "credentials"), orderBy("creadoEn", "desc"));
     const qcampos = query(collection(db, "campos"), orderBy("creadoEn", "desc"));
 
-    // Cargamos todo de manera independiente
     const [w, c, cred, cam] = await Promise.all([
       fetchSafe(qw), fetchSafe(qc), fetchSafe(qcred), fetchSafe(qcampos)
     ]);
@@ -940,6 +1024,28 @@ export default function App() {
       await addDoc(collection(db, "campos"), { ...data, creadoEn: serverTimestamp() });
       await loadData();
     } catch (error) { alert("Error al guardar: " + error.message); }
+    setLoadingData(false);
+  };
+  
+  // NUEVA FUNCIÓN DE CARGA MASIVA DE CAMPOS
+  const handleBulkUploadCampos = async (camposArray) => {
+    setLoadingData(true);
+    try {
+      const batch = writeBatch(db);
+      camposArray.forEach(item => {
+        const docRef = doc(collection(db, "campos"));
+        batch.set(docRef, { 
+          campo: item.campo, 
+          centro: item.centro, 
+          descripcion: item.descripcion, 
+          creadoEn: serverTimestamp() 
+        });
+      });
+      await batch.commit();
+      await loadData();
+    } catch (error) {
+      alert("Error al cargar campos masivamente: " + error.message);
+    }
     setLoadingData(false);
   };
 
@@ -1150,7 +1256,7 @@ export default function App() {
         {view === "workers_form" && <WorkerForm onSave={handleSaveWorker} onCancel={() => { setView("workers_list"); setEditTarget(null); }} initial={editTarget} contractorsList={contractors} credentialsList={credentials} />}
         {view === "contractors_form" && <ContractorForm onSave={handleSaveContractor} onCancel={() => { setView("contractors_list"); setEditTarget(null); }} initial={editTarget} />}
         {view === "credentials_list" && <CredentialsManager credentialsList={credentials} onBulkUpload={handleBulkUploadCredentials} onDelete={handleDeleteCredential} loading={loadingData} />}
-        {view === "campos" && <CamposManager camposList={camposList} onAdd={handleAddCampo} onDelete={handleDeleteCampo} loading={loadingData} />}
+        {view === "campos" && <CamposManager camposList={camposList} onAdd={handleAddCampo} onBulkUpload={handleBulkUploadCampos} onDelete={handleDeleteCampo} loading={loadingData} />}
         {view === "tarjas" && <TarjasManager camposList={camposList} />}
 
         {(view === "workers_list" || view === "contractors_list") && (
