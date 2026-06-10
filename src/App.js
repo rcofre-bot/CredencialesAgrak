@@ -304,8 +304,8 @@ function CamposManager({ camposList, onSave, onDelete, loading }) {
 
 // ─── MÓDULO: Tarjas de Cosecha (Zebra ZT230) ─
 const EMPRESAS_TARJAS = [
-  { id: 0, nombre: "AGRICOLA CONVENTO VIEJO SPA", rut: "76.843.510-2" },
-  { id: 1, nombre: "OTRA AGRICOLA EJEMPLO SPA", rut: "77.123.456-9" }
+  { id: 0, nombre: "AGRICOLA CONVENTO VIEJO SPA", rut: "79.737.880-1" },
+  { id: 1, nombre: "TORRETAGLE", rut: "76.064.746-2" }
 ];
 
 function TarjasManager({ camposList }) {
@@ -1179,7 +1179,7 @@ export default function App() {
     return (
       <div className="login-screen">
         <div className="login-card">
-          <div className="login-icon">👷</div><h1 className="login-title">Registro de Personal</h1><p className="login-sub">Sistema de control y credenciales</p>
+          <div className="login-icon">👷</div><h1 className="login-title">Control de Campo y Cosecha</h1><p className="login-sub">Control de trazabilidad y personal</p>
           <button className="btn-google" onClick={handleLogin}>Ingresar con Google</button>
         </div>
       </div>
