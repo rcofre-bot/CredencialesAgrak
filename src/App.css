@@ -783,6 +783,19 @@ body {
   }
 }
 
+/* --- ESTILOS PARA EL LOGO CORPORATIVO --- */
+.login-logo {
+  max-height: 80px; /* Ajusta este valor si tu logo es muy grande o pequeño */
+  margin-bottom: 20px;
+  object-fit: contain;
+}
+
+.topbar-logo {
+  max-height: 30px;
+  margin-right: 12px;
+  object-fit: contain;
+}
+
 /* Ajuste extra para teléfonos muy pequeños (iPhone SE, etc) */
 @media screen and (max-width: 480px) {
   .login-card {
@@ -793,3 +806,4 @@ body {
     font-size: 24px;
   }
 }
+

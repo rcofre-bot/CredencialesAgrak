@@ -1179,7 +1179,7 @@ export default function App() {
     return (
       <div className="login-screen">
         <div className="login-card">
-          <div className="login-icon">👷</div><h1 className="login-title">Control de Campo y Cosecha</h1><p className="login-sub">Control de trazabilidad y personal</p>
+          <img src="/logo.png" alt="Logo Convento Viejo" className="login-logo" /><h1 className="login-title">Control de Campo y Cosecha</h1><p className="login-sub">Control de trazabilidad y personal</p>
           <button className="btn-google" onClick={handleLogin}>Ingresar con Google</button>
         </div>
       </div>
@@ -1287,7 +1287,7 @@ function TopBar({ user, onLogout }) {
   return (
     <header className="topbar">
       <div className="topbar-brand">
-        <span className="topbar-icon">👷</span>
+        <img src="/logo.png" alt="Logo" className="topbar-logo" />
         <span className="topbar-title">Registro de Personal</span>
       </div>
       <div className="topbar-user">
