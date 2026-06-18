@@ -1,31 +1,21 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
-  collection,
-  addDoc,
-  getDocs,
-  doc,
-  updateDoc,
-  query,
-  where,
-  orderBy,
-  serverTimestamp,
-  writeBatch,
-  deleteDoc
+  collection, addDoc, getDocs, doc, updateDoc, setDoc, getDoc, query, where, serverTimestamp, writeBatch, deleteDoc, onSnapshot
 } from "firebase/firestore";
-import {
-  signInWithPopup,
-  signOut,
-  onAuthStateChanged,
-} from "firebase/auth";
+import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
 import { db, auth, googleProvider } from "./firebase";
 import QRCode from "qrcode";
 import { v4 as uuidv4 } from "uuid";
+import toast, { Toaster } from "react-hot-toast";
 import "./App.css";
 
-// ─── Listado Maestro de Empresas Autorizadas ─────────────
+// ─── IMPORTACIÓN DE COMPONENTES EXTERNOS ────────────────
+import CamposManager from "./components/CamposManager";
+import TarjasManager from "./components/TarjasManager";
+
 const EMPRESAS_MAESTRAS = [
-  { id: 0, nombre: "AGRICOLA CONVENTO VIEJO SPA", rut: "76.843.510-2", fundoDefault: "FUNDO CONVENTO VIEJO" },
-  { id: 1, nombre: "AGRICOLA TORRETAGLE SPA", rut: "77.999.888-K", fundoDefault: "FUNDO TORRETAGLE" }
+  { id: 0, nombre: "AGRICOLA CONVENTO VIEJO SPA", rut: "79.737.880-1", prefijo: "AAON" },
+  { id: 1, nombre: "TORRETAGLE", rut: "76.064.746-2", prefijo: "AAON" }
 ];
 
 // ─── Helpers ────────────────────────────────────────────
@@ -45,8 +35,7 @@ const validateRut = (rut) => {
   if (cleanRut.length < 2) return false;
   const body = cleanRut.slice(0, -1);
   const dv = cleanRut.slice(-1);
-  let sum = 0;
-  let multiplier = 2;
+  let sum = 0; let multiplier = 2;
   for (let i = body.length - 1; i >= 0; i--) {
     sum += parseInt(body.charAt(i)) * multiplier;
     multiplier = multiplier < 7 ? multiplier + 1 : 2;
@@ -56,26 +45,14 @@ const validateRut = (rut) => {
   return dv === calculatedDv;
 };
 
-const generateWorkerCode = () => {
-  const id = uuidv4();
-  return JSON.stringify({ id, type: "worker" });
-};
-
+const generateWorkerCode = () => JSON.stringify({ id: uuidv4(), type: "worker" });
 const parseDate = (dateStr) => {
   if (!dateStr || !dateStr.includes("-")) return "—";
-  const parts = dateStr.split("-");
-  if (parts.length !== 3) return dateStr;
-  const [y, m, d] = parts;
-  return `${d}/${m}/${y}`;
+  const [y, m, d] = dateStr.split("-"); return `${d}/${m}/${y}`;
 };
 
-const EMPTY_WORKER_FORM = {
-  rut: "", nombre: "", apellido: "", contratista: "", fechaIngreso: "", estado: "Activo",
-};
-
-const EMPTY_CONTRACTOR_FORM = {
-  rut: "", nombre: "", contacto: "", estado: "Activo",
-};
+const EMPTY_WORKER_FORM = { rut: "", nombre: "", apellido: "", contratista: "", fechaIngreso: "", estado: "Activo", empresaRut: "" };
+const EMPTY_CONTRACTOR_FORM = { rut: "", nombre: "", contacto: "", estado: "Activo", empresaRut: "" };
 
 // ─── Componente QR Canvas (Para Personal) ───────────────
 function QRCard({ worker, logoUrl, onClose }) {
@@ -91,10 +68,8 @@ function QRCard({ worker, logoUrl, onClose }) {
   const handlePrint = () => {
     if (!canvasRef.current) return;
     const qrImageUrl = canvasRef.current.toDataURL("image/png");
-    const win = window.open("", "_blank", "width=600,height=700");
-    if (!win) { alert("Por favor permite las ventanas emergentes (pop-ups) para imprimir."); return; }
     
-    win.document.write(`
+    const htmlContent = `
       <!DOCTYPE html>
       <html>
         <head>
@@ -152,10 +127,25 @@ function QRCard({ worker, logoUrl, onClose }) {
           </div>
         </body>
       </html>
-    `);
-    win.document.close();
-    win.focus();
-    setTimeout(() => { win.print(); }, 250);
+    `;
+
+    const printFrame = document.createElement("iframe");
+    printFrame.style.position = "absolute";
+    printFrame.style.width = "0px";
+    printFrame.style.height = "0px";
+    printFrame.style.border = "none";
+    document.body.appendChild(printFrame);
+    
+    const docFrame = printFrame.contentWindow.document;
+    docFrame.open();
+    docFrame.write(htmlContent);
+    docFrame.close();
+
+    setTimeout(() => {
+      printFrame.contentWindow.focus();
+      printFrame.contentWindow.print();
+      setTimeout(() => document.body.removeChild(printFrame), 1000);
+    }, 500);
   };
 
   return (
@@ -194,485 +184,10 @@ function QRCard({ worker, logoUrl, onClose }) {
   );
 }
 
-// ─── MÓDULO MANTENEDOR DE CAMPOS Y CENTROS DE COSTO (ASOCIADO A EMPRESA) ───
-function CamposManager({ camposList, onSave, onDelete, loading }) {
-  const [empresaRut, setEmpresaRut] = useState(EMPRESAS_MAESTRAS[0].rut);
-  const [campo, setCampo] = useState("");
-  const [centro, setCentro] = useState("");
-  const [descripcion, setDescripcion] = useState("");
-  const [editId, setEditId] = useState(null);
-
-  const handleSaveClick = () => {
-    if (!campo.trim() || !centro.trim()) {
-      alert("Debes ingresar el nombre del Campo y el Centro de Costo.");
-      return;
-    }
-    
-    onSave({ 
-      empresaRut: empresaRut, // Guardamos la vinculación
-      campo: campo.toUpperCase().trim(), 
-      centro: centro.toUpperCase().trim(),
-      descripcion: descripcion.trim()
-    }, editId);
-    
-    setCampo("");
-    setCentro(""); 
-    setDescripcion("");
-    setEditId(null);
-  };
-
-  const handleEditClick = (item) => {
-    setEmpresaRut(item.empresaRut || EMPRESAS_MAESTRAS[0].rut);
-    setCampo(item.campo);
-    setCentro(item.centro);
-    setDescripcion(item.descripcion || "");
-    setEditId(item.id);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const handleCancelEdit = () => {
-    setEmpresaRut(EMPRESAS_MAESTRAS[0].rut);
-    setCampo("");
-    setCentro("");
-    setDescripcion("");
-    setEditId(null);
-  };
-
-  return (
-    <div style={{ maxWidth: "900px", margin: "0 auto", display: "flex", flexDirection: "column", gap: "20px" }}>
-      
-      <div className="form-card">
-        <h3 className="form-title">{editId ? "Editar Campo / Centro de Costo" : "Agregar Campo / Centro de Costo"}</h3>
-        <p style={{ color: "#64748b", fontSize: "14px", marginBottom: "20px" }}>
-          Registra fundos y cuarteles asociándolos estrictamente a su empresa correspondiente para segmentar la emisión de tarjas.
-        </p>
-
-        <div className="form-grid" style={{ marginBottom: "10px", background: "#f8fafc", padding: "20px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
-          
-          <div className="form-group" style={{ gridColumn: "1 / -1" }}>
-            <label>Asociar a Empresa *</label>
-            <select value={empresaRut} onChange={e => setEmpresaRut(e.target.value)} style={{ fontWeight: "bold", width: "100%", padding: "10px" }}>
-              {EMPRESAS_MAESTRAS.map(emp => (
-                <option key={emp.rut} value={emp.rut}>{emp.nombre}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="form-group">
-            <label>Nombre del Campo / Fundo *</label>
-            <input value={campo} onChange={e => setCampo(e.target.value)} placeholder="Ej: CARMEN ROSA" />
-          </div>
-          <div className="form-group">
-            <label>Centro de Costo / Cuartel *</label>
-            <input value={centro} onChange={e => setCentro(e.target.value)} placeholder="Ej: LOS NOGALES 1" />
-          </div>
-          <div className="form-group" style={{ gridColumn: "1 / -1" }}>
-            <label>Descripción (Opcional)</label>
-            <input value={descripcion} onChange={e => setDescripcion(e.target.value)} placeholder="Sector riego, variedad frutal..." />
-          </div>
-          
-          <div className="form-group" style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px" }}>
-            {editId && <button className="btn-secondary" onClick={handleCancelEdit} disabled={loading}>Cancelar</button>}
-            <button className="btn-primary" onClick={handleSaveClick} disabled={loading}>
-              {loading ? "Guardando..." : (editId ? "💾 Actualizar Información" : "➕ Guardar Centro")}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div className="form-card">
-        <h3 className="form-title">Centros de Costo por Empresa ({camposList.length})</h3>
-        <div className="table-wrap">
-          <table className="workers-table">
-            <thead>
-              <tr>
-                <th>Empresa Asociada</th>
-                <th>Campo / Fundo</th>
-                <th>C.Costo (Cuartel)</th>
-                <th>Descripción</th>
-                <th style={{ width: "120px", textAlign: "center" }}>Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {camposList.map(c => {
-                const empAsoc = EMPRESAS_MAESTRAS.find(e => e.rut === c.empresaRut);
-                return (
-                  <tr key={c.id} style={{ backgroundColor: editId === c.id ? "#fef9c3" : "transparent" }}>
-                    <td style={{ fontSize: "12px", color: "#475569", fontWeight: "600" }}>
-                      {empAsoc ? empAsoc.nombre.replace("AGRICOLA ", "") : "CONVENTO VIEJO (MIGRADO)"}
-                    </td>
-                    <td style={{ fontWeight: "bold", color: "#0f172a" }}>{c.campo}</td>
-                    <td>{c.centro}</td>
-                    <td style={{ color: "#64748b", fontSize: "13px" }}>{c.descripcion || "—"}</td>
-                    <td style={{ textAlign: "center" }}>
-                      <button className="btn-action" onClick={() => handleEditClick(c)} title="Editar">✏️</button>
-                      <button className="btn-action btn-action-warn" onClick={() => onDelete(c.id)} title="Eliminar">🗑️</button>
-                    </td>
-                  </tr>
-                );
-              })}
-              {camposList.length === 0 && (
-                <tr><td colSpan="5" style={{textAlign:"center", color:"#888"}}>No hay centros de costo registrados.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-      
-    </div>
-  );
-}
-
-// ─── MÓDULO: Tarjas de Cosecha (Zebra ZT230 - TOTALMENTE FILTRADO POR EMPRESA) ───
-function TarjasManager({ camposList }) {
-  const [empresaIdx, setEmpresaIdx] = useState(0);
-  const [fecha, setFecha] = useState(new Date().toISOString().split("T")[0]);
-  
-  const [campoSeleccionado, setCampoSeleccionado] = useState("");
-  const [centroSeleccionado, setCentroSeleccionado] = useState("");
-  const [corte, setCorte] = useState("");
-  const [cantidad, setCantidad] = useState(10);
-  
-  const [historial, setHistorial] = useState([]);
-  const [inicio, setInicio] = useState(1);
-  const [ultimoCodigo, setUltimoCodigo] = useState("Cargando...");
-  
-  const [tarjas, setTarjas] = useState([]);
-  const [procesando, setProcesando] = useState(false);
-  const prefijo = "AAON"; 
-
-  const empresaActiva = EMPRESAS_MAESTRAS[empresaIdx] || EMPRESAS_MAESTRAS[0];
-
-  // ── FILTRADO MULTI-EMPRESA CRÍTICO ──
-  // Si un registro antiguo no tiene 'empresaRut', asumimos por defecto Convento Viejo para no romper datos históricos.
-  const listaCamposFiltrados = camposList.filter(c => {
-    if (!c.empresaRut) return empresaActiva.rut === "76.843.510-2"; // Convento Viejo RUT
-    return c.empresaRut === empresaActiva.rut;
-  });
-
-  const camposUnicos = [...new Set(listaCamposFiltrados.map(c => c.campo))];
-  const centrosFiltrados = listaCamposFiltrados.filter(c => c.campo === campoSeleccionado).map(c => c.centro);
-
-  const cargarHistorial = useCallback(async () => {
-    try {
-      const q = query(collection(db, "tarjas_history"), orderBy("creadoEn", "desc"));
-      const snap = await getDocs(q);
-      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setHistorial(docs);
-
-      let maxFin = 0;
-      docs.forEach(d => {
-        if (d.fin && d.fin > maxFin) maxFin = d.fin;
-      });
-      
-      setInicio(maxFin + 1);
-      
-      if (maxFin > 0) {
-        setUltimoCodigo(`bin;${prefijo}${String(maxFin).padStart(4, '0')}`);
-      } else {
-        setUltimoCodigo("Ninguno");
-      }
-      
-    } catch (e) {
-      console.error("Error al cargar historial de tarjas:", e);
-      setUltimoCodigo("Error de conexión");
-    }
-  }, []);
-
-  useEffect(() => {
-    cargarHistorial();
-  }, [cargarHistorial]);
-
-  const generarPrevisualizacion = async () => {
-    if (!campoSeleccionado || !centroSeleccionado || !corte) {
-      alert("Por favor, selecciona el Campo, Centro de Costo y Corte antes de previsualizar.");
-      return;
-    }
-    const cantNum = parseInt(cantidad || 0);
-    if (cantNum < 1) {
-      alert("La cantidad debe ser mayor a 0.");
-      return;
-    }
-
-    const nuevasTarjas = [];
-    const [y, m, d] = fecha.split("-");
-    const fechaStr = `${d}-${m}-${y}`;
-
-    for (let i = 0; i < cantNum; i++) {
-      const numActual = inicio + i;
-      const numStr = String(numActual).padStart(4, '0');
-      const codigoQRData = `bin;${prefijo}${numStr}`;
-      
-      const qrDataUrl = await QRCode.toDataURL(codigoQRData, {
-        width: 300, margin: 0, color: { dark: "#000000", light: "#ffffff" }
-      });
-
-      nuevasTarjas.push({ codigo: codigoQRData, qrUrl: qrDataUrl, fechaStr, campo: campoSeleccionado, centroCosto: centroSeleccionado, corte });
-    }
-    setTarjas(nuevasTarjas);
-  };
-
-  const registrarEImprimirZebra = async () => {
-    if (tarjas.length === 0) {
-      alert("Primero debes previsualizar el lote generado.");
-      return;
-    }
-
-    setProcesando(true);
-    const cantNum = parseInt(cantidad || 0);
-    const numFin = inicio + cantNum - 1;
-
-    try {
-      await addDoc(collection(db, "tarjas_history"), {
-        empresa: empresaActiva.nombre,
-        empresaRut: empresaActiva.rut,
-        campo: campoSeleccionado.toUpperCase(),
-        centroCosto: centroSeleccionado.toUpperCase(),
-        fechaCosecha: fecha,
-        corte: corte.toUpperCase(),
-        prefijo: prefijo,
-        inicio: inicio,
-        cantidad: cantNum,
-        fin: numFin,
-        creadoEn: serverTimestamp()
-      });
-    } catch(e) {
-      console.error("Error al guardar historial de tarjas", e);
-      alert("Hubo un error al guardar el registro en la nube.");
-      setProcesando(false);
-      return;
-    }
-
-    const win = window.open("", "_blank");
-    if (!win) {
-      alert("El navegador bloqueó la ventana de impresión.");
-      setProcesando(false);
-      return;
-    }
-
-    let html = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Impresión Zebra</title>
-          <style>
-            * { box-sizing: border-box; margin: 0; padding: 0; }
-            @page { size: 100mm 70mm; margin: 0; padding: 0; }
-            body { font-family: 'Arial', sans-serif; background: #fff; color: #000; width: 100mm; height: 70mm; }
-            @media print {
-              html, body { width: 100mm; height: 70mm; margin: 0; padding: 0; overflow: hidden; }
-              .label { border: none !important; margin: 0 !important; page-break-after: always; page-break-inside: avoid; }
-            }
-            .label { 
-              width: 100mm; height: 70mm; padding: 3mm 4mm; display: flex; flex-direction: column; justify-content: space-between;
-              overflow: hidden; background: #fff; border: 1px dashed #ccc; 
-            }
-            .header { display: flex; justify-content: space-between; font-size: 8pt; font-weight: bold; border-bottom: 0.8mm solid #000; padding-bottom: 1mm; margin-bottom: 1mm;}
-            .sub-header { display: flex; justify-content: space-between; font-size: 10pt; font-weight: bold; border-bottom: 0.8mm solid #000; padding-bottom: 1mm; }
-            .body { display: flex; align-items: center; justify-content: space-between; flex-grow: 1; padding: 2mm 0; height: 42mm; gap: 2mm;}
-            .qr-container { width: 40mm; height: 40mm; display: flex; align-items: center; justify-content: flex-start; flex-shrink: 0;}
-            .qr-img { width: 100%; height: 100%; object-fit: contain; }
-            .text-container { display: flex; align-items: center; justify-content: flex-end; flex-grow: 1; overflow: hidden;}
-            .text-code { font-size: 16pt; font-weight: 900; letter-spacing: 0; text-align: right; word-break: break-all; line-height: 1.1;}
-            .footer { display: flex; justify-content: space-between; font-size: 8pt; font-weight: bold; border-top: 0.8mm solid #000; padding-top: 1mm; margin-top: 1mm;}
-          </style>
-        </head>
-        <body>
-    `;
-    
-    tarjas.forEach(t => {
-      html += `
-        <div class="label">
-          <div>
-            <div class="header">
-              <span>${empresaActiva.nombre.substring(0, 30)}</span>
-              <span>${t.fechaStr}</span>
-            </div>
-            <div class="sub-header">
-              <span>C.COSTO: ${t.centroCosto.substring(0, 15)}</span>
-              <span>CORTE: ${t.corte}</span>
-            </div>
-          </div>
-          <div class="body">
-            <div class="qr-container"><img class="qr-img" src="${t.qrUrl}" alt="QR" /></div>
-            <div class="text-container">
-              <div class="text-code">${t.codigo}</div>
-            </div>
-          </div>
-          <div class="footer">
-            <span>CAMPO: ${t.campo.substring(0, 20)}</span>
-            <span>RUT: ${empresaActiva.rut}</span>
-          </div>
-        </div>
-      `;
-    });
-
-    html += `</body></html>`;
-    win.document.write(html);
-    win.document.close();
-    win.focus();
-    
-    await cargarHistorial();
-    setTarjas([]);
-    setProcesando(false);
-    
-    setTimeout(() => { win.print(); }, 500);
-  };
-
-  const numFinVista = inicio + parseInt(cantidad || 0) - 1;
-  const siguienteCodigoVista = `bin;${prefijo}${String(inicio).padStart(4, '0')}`;
-  const finVistaCompleto = `bin;${prefijo}${String(numFinVista).padStart(4, '0')}`;
-
-  return (
-    <div className="form-card" style={{ maxWidth: "1000px", margin: "0 auto" }}>
-      <h3 className="form-title">Generador de Tarjas de Cosecha (Zebra 100x70mm)</h3>
-      <p style={{ color: "#64748b", fontSize: "14px", marginBottom: "20px" }}>
-        Selecciona la empresa emisora para filtrar automáticamente sus campos y centros de costo autorizados.
-      </p>
-
-      <div className="form-grid" style={{ marginBottom: "20px", background: "#f8fafc", padding: "20px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
-        
-        <div className="form-group" style={{ gridColumn: "1 / -1" }}>
-          <label style={{color:"#16a34a", fontWeight:"bold"}}>Seleccionar Empresa Emisora de Tarja</label>
-          <select value={empresaIdx} onChange={e => { setEmpresaIdx(Number(e.target.value)); setCampoSeleccionado(""); setCentroSeleccionado(""); }} style={{ fontWeight: "bold", width: "100%", padding: "10px", border:"2px solid #16a34a" }}>
-            {EMPRESAS_MAESTRAS.map((emp, idx) => (
-              <option key={idx} value={idx}>{emp.nombre} - RUT: {emp.rut}</option>
-            ))}
-          </select>
-        </div>
-
-        <div className="form-group"><label>Fecha de Cosecha</label><input type="date" value={fecha} onChange={e => setFecha(e.target.value)} /></div>
-        
-        <div className="form-group">
-          <label>Campo / Fundo ({empresaActiva.nombre.replace("AGRICOLA ","")}) *</label>
-          <input 
-            list="lista-campos" 
-            value={campoSeleccionado} 
-            onChange={e => { setCampoSeleccionado(e.target.value.toUpperCase()); setCentroSeleccionado(""); }} 
-            placeholder="Escribe para buscar campo..." 
-            autoComplete="off"
-          />
-          <datalist id="lista-campos">
-            {camposUnicos.map(c => <option key={c} value={c} />)}
-          </datalist>
-        </div>
-
-        <div className="form-group">
-          <label>C. Costo (Cuartel Filtrado) *</label>
-          <input 
-            list="lista-centros" 
-            value={centroSeleccionado} 
-            onChange={e => setCentroSeleccionado(e.target.value.toUpperCase())} 
-            placeholder={campoSeleccionado ? "Escribe para buscar..." : "Selecciona un Campo primero"} 
-            autoComplete="off"
-          />
-          <datalist id="lista-centros">
-            {centrosFiltrados.map(c => <option key={c} value={c} />)}
-          </datalist>
-        </div>
-
-        <div className="form-group"><label>Corte *</label><input value={corte} onChange={e => setCorte(e.target.value.toUpperCase())} placeholder="Ej: 1" /></div>
-        
-        <div className="form-group">
-          <label>Último Código General</label>
-          <input value={ultimoCodigo} disabled style={{ background: "#e2e8f0", color: "#64748b", fontWeight: "bold", cursor: "not-allowed", fontFamily: "monospace" }} />
-        </div>
-        <div className="form-group">
-          <label>Inicia Lote en</label>
-          <input value={siguienteCodigoVista} disabled style={{ background: "#e2e8f0", color: "#0f172a", fontWeight: "bold", cursor: "not-allowed", fontFamily: "monospace" }} />
-        </div>
-        <div className="form-group">
-          <label>Cantidad a Imprimir *</label>
-          <input type="number" min="1" max="1000" value={cantidad} onChange={e => setCantidad(e.target.value)} style={{ borderColor: "#16a34a", borderWidth: "2px", fontWeight: "bold" }} />
-        </div>
-        
-        <div style={{ gridColumn: "1 / -1", textAlign: "center", marginTop: "10px", color: "#16a34a", fontWeight: "bold" }}>
-          ℹ️ Generarás {cantidad || 0} etiquetas: Desde <span style={{fontFamily:"monospace", background:"#dcfce7", padding:"2px 6px", borderRadius:"4px"}}>{siguienteCodigoVista}</span> hasta <span style={{fontFamily:"monospace", background:"#dcfce7", padding:"2px 6px", borderRadius:"4px"}}>{finVistaCompleto}</span>
-        </div>
-      </div>
-
-      <div className="form-actions" style={{ justifyContent: "center", borderBottom: "1px solid #e2e8f0", paddingBottom: "25px", marginBottom: "25px" }}>
-        <button className="btn-secondary" onClick={generarPrevisualizacion} style={{ fontSize: "16px", padding: "12px 30px" }}>
-          👁️ Previsualizar Lote
-        </button>
-        
-        {tarjas.length > 0 && (
-          <button className="btn-primary" onClick={registrarEImprimirZebra} disabled={procesando} style={{ background: "#16a34a", fontSize: "16px", padding: "12px 30px" }}>
-            {procesando ? "Guardando..." : "🖨️ Guardar Historial e Imprimir Zebra"}
-          </button>
-        )}
-      </div>
-
-      {/* VISTA PREVIA WEB */}
-      {tarjas.length > 0 && (
-        <div>
-          <h4 style={{ marginBottom: "15px", color: "#1e293b" }}>Vista Previa ({tarjas.length} etiquetas listas para guardar)</h4>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "15px", maxHeight: "400px", overflowY: "auto", background: "#f8fafc", padding: "15px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
-            {tarjas.map(t => (
-              <div key={t.codigo} style={{ background: "#fff", padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e1", width: "320px", display: "flex", flexDirection: "column", color: "#000" }}>
-                <div style={{ fontSize: "11px", fontWeight: "bold", display: "flex", justifyContent: "space-between", borderBottom: "3px solid #000", paddingBottom: "3px", marginBottom: "3px" }}>
-                  <span>{empresaActiva.nombre.substring(0,25)}</span><span>{t.fechaStr}</span>
-                </div>
-                <div style={{ fontSize: "12px", fontWeight: "bold", display: "flex", justifyContent: "space-between", borderBottom: "3px solid #000", paddingBottom: "3px", marginBottom: "3px" }}>
-                  <span>C.COSTO: {t.centroCosto.substring(0,15)}</span><span>CORTE: {t.corte}</span>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0" }}>
-                  <img src={t.qrUrl} alt="QR" style={{ width: "100px", height: "100px", flexShrink: 0 }} />
-                  <div style={{ textAlign: "right", paddingLeft: "10px", flexGrow: 1, overflow: "hidden" }}>
-                    <div style={{ fontWeight: "900", fontSize: "18px", letterSpacing: "0px", wordBreak: "break-all", lineHeight: "1.1" }}>{t.codigo}</div>
-                  </div>
-                </div>
-                <div style={{ fontSize: "11px", fontWeight: "bold", display: "flex", justifyContent: "space-between", borderTop: "3px solid #000", paddingTop: "3px", marginTop: "3px" }}>
-                  <span>CAMPO: {t.campo.substring(0,20)}</span><span>RUT: {empresaActiva.rut}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* TABLA DE HISTORIAL DE IMPRESIONES */}
-      <div style={{ marginTop: "40px" }}>
-        <h4 style={{ marginBottom: "15px", color: "#1e293b" }}>Auditoría: Historial de Impresiones Guardadas</h4>
-        {historial.length === 0 ? (
-           <div className="empty-state"><p>Aún no se han impreso tarjas.</p></div>
-        ) : (
-          <div className="table-wrap">
-            <table className="workers-table">
-              <thead>
-                <tr>
-                  <th>Fecha Emisión</th>
-                  <th>Empresa / Campo / C.Costo</th>
-                  <th>Rango Impreso</th>
-                  <th style={{textAlign: "center"}}>Cantidad</th>
-                </tr>
-              </thead>
-              <tbody>
-                {historial.map((lote) => (
-                  <tr key={lote.id}>
-                    <td>{lote.creadoEn ? new Date(lote.creadoEn.seconds * 1000).toLocaleString() : "Recién..."}</td>
-                    <td>
-                      <div style={{fontWeight: "bold"}}>{lote.empresa}</div>
-                      <div style={{fontSize: "12px", color: "#64748b"}}>Campo: {lote.campo} | C.Costo: {lote.centroCosto}</div>
-                    </td>
-                    <td className="cell-mono" style={{fontWeight: "600"}}>
-                      bin;{lote.prefijo}{String(lote.inicio).padStart(4, '0')} - bin;{lote.prefijo}{String(lote.fin).padStart(4, '0')}
-                    </td>
-                    <td style={{textAlign: "center", fontWeight: "bold", color: "#16a34a"}}>{lote.cantidad}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── Administrador de Credenciales (Para Trabajadores) ──
-function CredentialsManager({ credentialsList, onBulkUpload, onDelete, loading }) {
+// ─── Administrador de Credenciales (BOLSILLOS POR EMPRESA) ──
+function CredentialsManager({ credentialsList, onBulkUpload, onDelete, loading, userEmpresa }) {
   const [bulkText, setBulkText] = useState("");
+  const [empresaDestino, setEmpresaDestino] = useState(userEmpresa === "TODAS" ? "" : userEmpresa);
 
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
@@ -684,6 +199,7 @@ function CredentialsManager({ credentialsList, onBulkUpload, onDelete, loading }
   };
 
   const handleUpload = () => {
+    if (!empresaDestino) { toast.error("Selecciona la empresa dueña de estas credenciales."); return; }
     if (!bulkText.trim()) return;
     const lines = bulkText.split("\n").map(l => l.trim()).filter(l => l !== "");
     const newCredentials = [];
@@ -693,11 +209,8 @@ function CredentialsManager({ credentialsList, onBulkUpload, onDelete, loading }
       if (separatorIndex !== -1) {
         let folio = line.substring(0, separatorIndex).trim();
         let codigo = line.substring(separatorIndex + 1).trim();
-
-        folio = folio.replace(/^"|"$/g, '');
-        codigo = codigo.replace(/^"|"$/g, '');
-        folio = folio.replace(/""/g, '"');
-        codigo = codigo.replace(/""/g, '"');
+        folio = folio.replace(/^"|"$/g, '').replace(/""/g, '"');
+        codigo = codigo.replace(/^"|"$/g, '').replace(/""/g, '"');
 
         if (folio && codigo) {
           newCredentials.push({ folio, codigo });
@@ -706,30 +219,38 @@ function CredentialsManager({ credentialsList, onBulkUpload, onDelete, loading }
     }
 
     if (newCredentials.length === 0) {
-      alert("El formato es incorrecto. Asegúrate de usar 'Folio, Código' en cada línea.");
+      toast.error("El formato es incorrecto. Usa 'Folio, Código' por línea.");
       return;
     }
 
-    onBulkUpload(newCredentials);
+    onBulkUpload(newCredentials, empresaDestino);
     setBulkText("");
   };
 
-  const disponibles = credentialsList
-    .filter(c => c.estado === "Disponible")
-    .sort((a, b) => String(a.folio).localeCompare(String(b.folio), undefined, { numeric: true, sensitivity: 'base' }));
-    
-  const asignadas = credentialsList.filter(c => c.estado === "Asignado");
+  const credsFiltradas = credentialsList.filter(c => c.empresaRut === empresaDestino);
+  const disponibles = credsFiltradas.filter(c => c.estado === "Disponible").sort((a, b) => String(a.folio).localeCompare(String(b.folio), undefined, { numeric: true, sensitivity: 'base' }));
+  const asignadas = credsFiltradas.filter(c => c.estado === "Asignado");
 
   return (
-    <div className="form-card" style={{ maxWidth: "800px", margin: "0 auto" }}>
-      <h3 className="form-title">Carga Masiva de Credenciales (Folio y Código)</h3>
+    <div className="form-card" style={{ maxWidth: "800px", width: "100%", margin: "0 auto" }}>
+      <h3 className="form-title">Carga Masiva de Credenciales (Bolsillos por Empresa)</h3>
       <p style={{ color: "#64748b", fontSize: "14px", marginBottom: "15px" }}>
-        Puedes cargar un archivo (.csv o .txt) o pegar tu lista separada por comas. Estas tarjetas quedarán "Disponibles" para asignar automáticamente a los nuevos trabajadores.
+        Como Agrak maneja las empresas por separado, debes cargar las tarjetas QRs en el "bolsillo" de cada empresa. Así, el código "001" de Torretagle no interfiere con el "001" de Convento Viejo.
       </p>
       
+      <div className="form-grid" style={{ background: "#f8fafc", padding: "15px", borderRadius: "8px", border: "1px solid #e2e8f0", marginBottom: "20px" }}>
+        <div className="form-group" style={{ gridColumn: "1 / -1" }}>
+          <label>¿A qué empresa le vas a inyectar estos códigos? *</label>
+          <select value={empresaDestino} onChange={e => setEmpresaDestino(e.target.value)} style={{ fontWeight: "bold", borderColor: "#16a34a" }}>
+            <option value="">Selecciona una empresa...</option>
+            {EMPRESAS_MAESTRAS.map(emp => <option key={emp.rut} value={emp.rut}>🏢 {emp.nombre}</option>)}
+          </select>
+        </div>
+      </div>
+
       <div style={{ marginBottom: "15px" }}>
         <label className="btn-secondary" style={{ cursor: "pointer", display: "inline-block" }}>
-          📁 Seleccionar Archivo
+          📁 Seleccionar Archivo (.csv o .txt)
           <input type="file" accept=".csv, .txt" onChange={handleFileUpload} style={{ display: "none" }} />
         </label>
       </div>
@@ -738,113 +259,421 @@ function CredentialsManager({ credentialsList, onBulkUpload, onDelete, loading }
         rows={8}
         value={bulkText}
         onChange={(e) => setBulkText(e.target.value)}
-        placeholder="Ejemplo:&#10;1001, {&#34;id&#34;:&#34;123&#34;,&#34;type&#34;:&#34;worker&#34;}&n1002, 987654321"
+        placeholder="Ejemplo:&#10;1001, {&#34;id&#34;:&#34;123&#34;,&#34;type&#34;:&#34;worker&#34;}"
         style={{ width: "100%", padding: "12px", borderRadius: "8px", border: "1px solid #cbd5e1", marginBottom: "15px", fontFamily: "monospace" }}
       />
       <button className="btn-primary" onClick={handleUpload} disabled={loading || !bulkText.trim()}>
-        {loading ? "Cargando..." : "📤 Subir Credenciales a la Nube"}
+        {loading ? "Cargando..." : "📤 Inyectar QRs a la Empresa"}
       </button>
 
-      <div style={{ marginTop: "40px", borderTop: "1px solid #e2e8f0", paddingTop: "20px" }}>
-        <h4 style={{ marginBottom: "15px", color: "#1e293b" }}>Resumen de Credenciales en Sistema</h4>
-        <div style={{ display: "flex", gap: "20px", marginBottom: "20px" }}>
-          <div style={{ background: "#eefdf4", color: "#166534", padding: "10px 20px", borderRadius: "8px", fontWeight: "600" }}>
-            Disponibles: {disponibles.length}
+      {empresaDestino && (
+        <div style={{ marginTop: "40px", borderTop: "1px solid #e2e8f0", paddingTop: "20px" }}>
+          <h4 style={{ marginBottom: "15px", color: "#1e293b" }}>QRs Disponibles en el bolsillo de esta empresa</h4>
+          <div style={{ display: "flex", gap: "20px", marginBottom: "20px" }}>
+            <div style={{ background: "#eefdf4", color: "#166534", padding: "10px 20px", borderRadius: "8px", fontWeight: "600" }}>Libres: {disponibles.length}</div>
+            <div style={{ background: "#f1f5f9", color: "#475569", padding: "10px 20px", borderRadius: "8px", fontWeight: "600" }}>En uso por personal: {asignadas.length}</div>
           </div>
-          <div style={{ background: "#f1f5f9", color: "#475569", padding: "10px 20px", borderRadius: "8px", fontWeight: "600" }}>
-            Asignadas a personal: {asignadas.length}
-          </div>
-        </div>
 
-        {disponibles.length > 0 && (
-          <div style={{ maxHeight: "300px", overflowY: "auto", border: "1px solid #e2e8f0", borderRadius: "8px" }}>
-            <table className="workers-table" style={{ margin: 0 }}>
-              <thead>
-                <tr>
-                  <th>Folio</th>
-                  <th>Código QR Interno</th>
-                  <th>Estado</th>
-                  <th style={{ width: "80px", textAlign: "center" }}>Acción</th>
-                </tr>
-              </thead>
-              <tbody>
-                {disponibles.map(c => (
-                  <tr key={c.id}>
-                    <td style={{fontWeight: 'bold', color: '#0f172a'}}>{c.folio}</td>
-                    <td className="cell-mono">{c.codigo}</td>
-                    <td><span className="badge badge-activo">Disponible</span></td>
-                    <td style={{ textAlign: "center" }}>
-                      <button className="btn-action btn-action-warn" onClick={() => onDelete(c.id)} title="Eliminar código">🗑️</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          {disponibles.length > 0 && (
+            <div style={{ maxHeight: "300px", overflowY: "auto", border: "1px solid #e2e8f0", borderRadius: "8px" }}>
+              <table className="workers-table" style={{ margin: 0 }}>
+                <thead><tr><th>Folio</th><th>Código QR Interno</th><th>Estado</th><th style={{ width: "80px", textAlign: "center" }}>Acción</th></tr></thead>
+                <tbody>
+                  {disponibles.map(c => (
+                    <tr key={c.id}>
+                      <td style={{fontWeight: 'bold', color: '#0f172a'}}>{c.folio}</td>
+                      <td className="cell-mono">{c.codigo}</td>
+                      <td><span className="badge badge-activo">Disponible</span></td>
+                      <td style={{ textAlign: "center" }}><button className="btn-action btn-action-warn" onClick={() => onDelete(c.id)} title="Eliminar código">🗑️</button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── FORMULARIOS ───
+function WorkerForm({ onSave, onCancel, initial, contractorsList, credentialsList, userEmpresa }) {
+  const [form, setForm] = useState(initial || EMPTY_WORKER_FORM);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const handleRutChange = (e) => set("rut", formatRut(e.target.value));
+
+  const targetRut = userEmpresa !== "TODAS" ? userEmpresa : form.empresaRut;
+  const availableCount = targetRut ? credentialsList.filter(c => c.estado === "Disponible" && c.empresaRut === targetRut).length : 0;
+
+  const handleSubmit = async () => {
+    if (!form.rut || !form.nombre || !form.apellido || !form.fechaIngreso) {
+      toast.error("Completa RUT, Nombre, Apellido y Fecha de Ingreso.");
+      return;
+    }
+    if (userEmpresa === "TODAS" && !form.empresaRut) {
+      toast.error("Debes seleccionar la empresa a la que pertenece el trabajador.");
+      return;
+    }
+    if (!validateRut(form.rut)) {
+      toast.error("El RUT ingresado no es válido.");
+      return;
+    }
+
+    setError(""); setLoading(true);
+    try { await onSave(form); } catch (e) { toast.error(e.message); }
+    setLoading(false);
+  };
+
+  return (
+    <div className="form-card">
+      <h3 className="form-title">{initial ? "Editar Trabajador" : "Registrar Trabajador"}</h3>
+      {error && <div className="alert-error">{error}</div>}
+      <div className="form-grid">
+        <div className="form-group"><label>RUT *</label><input value={form.rut} onChange={handleRutChange} placeholder="12.345.678-9" maxLength={12} /></div>
+        <div className="form-group"><label>Nombre *</label><input value={form.nombre} onChange={(e) => set("nombre", e.target.value)} placeholder="Nombre" /></div>
+        <div className="form-group"><label>Apellido *</label><input value={form.apellido} onChange={(e) => set("apellido", e.target.value)} placeholder="Apellido" /></div>
+        
+        {userEmpresa === "TODAS" && (
+          <div className="form-group">
+            <label>Empresa de Destino *</label>
+            <select value={form.empresaRut} onChange={(e) => set("empresaRut", e.target.value)}>
+              <option value="">Selecciona una empresa...</option>
+              {EMPRESAS_MAESTRAS.map(emp => <option key={emp.rut} value={emp.rut}>{emp.nombre}</option>)}
+            </select>
           </div>
         )}
+
+        <div className="form-group">
+          <label>Contratista (Empresa o Contacto)</label>
+          <input list="lista-contratistas" value={form.contratista} onChange={(e) => set("contratista", e.target.value)} placeholder="Escribe el nombre o contacto..." autoComplete="off" />
+          <datalist id="lista-contratistas">
+            {contractorsList.filter(c => c.estado === "Activo").map((c) => (
+              <option key={c.id} value={`${c.nombre}${c.contacto ? ` - Contacto: ${c.contacto}` : ""}`} />
+            ))}
+          </datalist>
+        </div>
+
+        <div className="form-group"><label>Fecha de Ingreso *</label><input type="date" value={form.fechaIngreso} onChange={(e) => set("fechaIngreso", e.target.value)} /></div>
+        <div className="form-group"><label>Estado</label><select value={form.estado} onChange={(e) => set("estado", e.target.value)}><option value="Activo">Activo</option><option value="Inactivo">Inactivo</option></select></div>
+        
+        <div className="form-group" style={{ gridColumn: "1 / -1", background: "#f8fafc", padding: "15px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+          <label style={{ fontSize: "14px", fontWeight: "700", color: "#0f172a", marginBottom: "8px", display: "block" }}>
+            🪪 Credencial Virtual (Asignación Automática)
+          </label>
+          {initial ? (
+            <p style={{ margin: 0, fontSize: "14px", color: "#475569" }}>✅ Este perfil ya tiene su QR guardado. (Si el estado cambia a Inactivo, la credencial se liberará para su empresa).</p>
+          ) : (
+            <p style={{ margin: 0, fontSize: "14px", color: availableCount > 0 ? "#166534" : "#dc2626" }}>
+              {targetRut === "" ? "Selecciona la empresa arriba para ver QRs disponibles." : 
+               availableCount > 0 ? `✨ Al guardar, se le asignará automáticamente el siguiente folio disponible (Quedan ${availableCount} en esta empresa).` : 
+               `⚠️ Esta empresa no tiene folios disponibles. Se generará un folio VIRTUAL de emergencia.`}
+            </p>
+          )}
+        </div>
+      </div>
+      <div className="form-actions">
+        <button className="btn-secondary" onClick={onCancel} disabled={loading}>Cancelar</button>
+        <button className="btn-primary" onClick={handleSubmit} disabled={loading}>{loading ? "Guardando…" : initial ? "Actualizar" : "Registrar y Asignar QR"}</button>
       </div>
     </div>
   );
 }
 
-// ─── App Principal ───────────────────────────────────────
+function ContractorForm({ onSave, onCancel, initial, userEmpresa }) {
+  const [form, setForm] = useState(initial || EMPTY_CONTRACTOR_FORM);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const handleRutChange = (e) => set("rut", formatRut(e.target.value));
+
+  const handleSubmit = async () => {
+    if (!form.rut || !form.nombre) { toast.error("Completa RUT y Nombre de Empresa."); return; }
+    if (userEmpresa === "TODAS" && !form.empresaRut) { toast.error("Selecciona a qué empresa mandante pertenece este contratista."); return; }
+    if (!validateRut(form.rut)) { toast.error("El RUT de la empresa no es válido."); return; }
+    setError(""); setLoading(true);
+    try { await onSave(form); } catch (e) { toast.error(e.message); }
+    setLoading(false);
+  };
+
+  return (
+    <div className="form-card">
+      <h3 className="form-title">{initial ? "Editar Contratista" : "Registrar Contratista"}</h3>
+      {error && <div className="alert-error">{error}</div>}
+      <div className="form-grid">
+        <div className="form-group"><label>RUT Empresa *</label><input value={form.rut} onChange={handleRutChange} placeholder="76.123.456-7" maxLength={12} /></div>
+        <div className="form-group"><label>Nombre Empresa *</label><input value={form.nombre} onChange={(e) => set("nombre", e.target.value)} placeholder="Ej: Constructora Alfa" /></div>
+        
+        {userEmpresa === "TODAS" && (
+          <div className="form-group">
+            <label>Empresa Mandante Asociada *</label>
+            <select value={form.empresaRut} onChange={(e) => set("empresaRut", e.target.value)}>
+              <option value="">Selecciona una empresa...</option>
+              {EMPRESAS_MAESTRAS.map(emp => <option key={emp.rut} value={emp.rut}>{emp.nombre}</option>)}
+            </select>
+          </div>
+        )}
+
+        <div className="form-group"><label>Contacto (Opcional)</label><input value={form.contacto} onChange={(e) => set("contacto", e.target.value)} placeholder="Nombre o Teléfono" /></div>
+        <div className="form-group"><label>Estado</label><select value={form.estado} onChange={(e) => set("estado", e.target.value)}><option value="Activo">Activo</option><option value="Inactivo">Inactivo</option></select></div>
+      </div>
+      <div className="form-actions">
+        <button className="btn-secondary" onClick={onCancel} disabled={loading}>Cancelar</button>
+        <button className="btn-primary" onClick={handleSubmit} disabled={loading}>{loading ? "Guardando…" : "Registrar Contratista"}</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── MÓDULO DE GESTIÓN DE USUARIOS Y ROLES ──────
+function UsersManager({ rolesList, onSaveUser, onDeleteUser }) {
+  const [email, setEmail] = useState("");
+  const [rol, setRol] = useState("Operador");
+  const [empresaRut, setEmpresaRut] = useState("TODAS");
+
+  const isEditing = rolesList.some(u => u.id === email.toLowerCase().trim());
+
+  const handleSave = () => {
+    if (!email.includes("@")) return toast.error("Ingresa un correo electrónico válido.");
+    onSaveUser(email.toLowerCase().trim(), rol, empresaRut);
+    setEmail("");
+    setRol("Operador");
+    setEmpresaRut("TODAS");
+  };
+
+  const handleEdit = (usuario) => {
+    setEmail(usuario.id);
+    setRol(usuario.rol);
+    setEmpresaRut(usuario.empresaRut || "TODAS");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  return (
+    <div style={{ maxWidth: "800px", width: "100%", margin: "0 auto", display: "flex", flexDirection: "column", gap: "20px" }}>
+      
+      <div className="form-card" style={{ width: "100%", boxSizing: "border-box" }}>
+        <h3 className="form-title">{isEditing ? "Actualizar Permisos de Usuario" : "Autorizar Nuevo Usuario"}</h3>
+        <p style={{ color: "#64748b", fontSize: "14px", marginBottom: "15px" }}>Segmenta el acceso vinculando el correo de Google a una empresa específica.</p>
+        <div className="form-grid" style={{ background: "#f8fafc", padding: "20px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+          
+          <div className="form-group">
+            <label>Correo de Google *</label>
+            <input 
+              value={email} 
+              onChange={e => setEmail(e.target.value)} 
+              placeholder="ejemplo@gmail.com" 
+              disabled={isEditing} 
+              style={isEditing ? { background: "#e2e8f0", cursor: "not-allowed" } : {}}
+            />
+          </div>
+          
+          <div className="form-group">
+            <label>Rol de Acceso *</label>
+            <select value={rol} onChange={e => setRol(e.target.value)} style={{ fontWeight: "bold" }}>
+              <option value="Operador">Operador (Solo imprime tarjas)</option>
+              <option value="Supervisor">Supervisor (Personal y Tarjas)</option>
+              <option value="Admin">Administrador (Acceso Total de la Empresa)</option>
+            </select>
+          </div>
+
+          <div className="form-group" style={{ gridColumn: "1 / -1" }}>
+            <label>Restringir a Empresa *</label>
+            <select value={empresaRut} onChange={e => setEmpresaRut(e.target.value)} style={{ fontWeight: "bold", borderColor: "#ef4444" }}>
+              <option value="TODAS">🔓 ACCESO GLOBAL (Todas las empresas)</option>
+              {EMPRESAS_MAESTRAS.map(emp => (
+                <option key={emp.rut} value={emp.rut}>🏢 {emp.nombre}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="form-group" style={{ gridColumn: "1 / -1", display: "flex", gap: "10px" }}>
+            {isEditing && (
+              <button className="btn-secondary" onClick={() => { setEmail(""); setRol("Operador"); setEmpresaRut("TODAS"); }} style={{ width: "30%" }}>
+                Cancelar
+              </button>
+            )}
+            <button className="btn-primary" onClick={handleSave} style={{ flexGrow: 1 }}>
+              {isEditing ? "🔄 Actualizar Permisos" : "➕ Dar Acceso y Segmentar"}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="form-card" style={{ width: "100%", boxSizing: "border-box" }}>
+        <h3 className="form-title">Usuarios Autorizados ({rolesList.length})</h3>
+        <div className="table-wrap">
+          <table className="workers-table" style={{ width: "100%" }}>
+            <thead>
+              <tr>
+                <th>Correo Electrónico</th>
+                <th>Nivel</th>
+                <th>Empresa Asignada</th>
+                <th style={{textAlign: "center"}}>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rolesList.map(u => {
+                const empAsociada = EMPRESAS_MAESTRAS.find(e => e.rut === u.empresaRut);
+                return (
+                  <tr key={u.id}>
+                    <td style={{fontWeight: u.rol === 'Admin' ? 'bold' : 'normal'}}>{u.id}</td>
+                    <td><span className={`badge ${u.rol === 'Admin' ? 'badge-activo' : 'badge-inactivo'}`}>{u.rol}</span></td>
+                    <td style={{fontSize: "13px", fontWeight: "600", color: u.empresaRut === "TODAS" ? "#dc2626" : "#0f172a"}}>
+                      {u.empresaRut === "TODAS" ? "🌍 GLOBAL (Acceso Total)" : empAsociada ? empAsociada.nombre : u.empresaRut}
+                    </td>
+                    <td style={{textAlign: "center"}}>
+                      <button className="btn-action" onClick={() => handleEdit(u)} title="Editar Permisos">✏️</button>
+                      <button className="btn-action btn-action-warn" onClick={() => onDeleteUser(u.id)} title="Revocar Acceso">🗑️</button>
+                    </td>
+                  </tr>
+                );
+              })}
+              {rolesList.length === 0 && (
+                <tr><td colSpan="4" style={{textAlign:"center", padding: "20px", color: "#64748b"}}>No hay usuarios registrados.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  );
+}
+
+// ─── APP PRINCIPAL ───────────────────────────────────────
 export default function App() {
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+  
+  const [userRole, setUserRole] = useState(null); 
+  const [userEmpresa, setUserEmpresa] = useState(null); 
+  const [isOnline, setIsOnline] = useState(typeof navigator !== "undefined" ? navigator.onLine : true);
   
   const [workers, setWorkers] = useState([]);
   const [contractors, setContractors] = useState([]);
   const [credentials, setCredentials] = useState([]);
   const [camposList, setCamposList] = useState([]); 
+  const [rolesList, setRolesList] = useState([]); 
   
-  const [loadingData, setLoadingData] = useState(false);
-  const [view, setView] = useState("workers_list"); 
+  const [loadingData, setLoadingData] = useState(true);
+  const [view, setView] = useState("tarjas"); 
   const [editTarget, setEditTarget] = useState(null);
   const [qrWorker, setQrWorker] = useState(null);
   const [logoUrl, setLogoUrl] = useState(localStorage.getItem("logoUrl") || "");
+  
+  // Estados para los filtros de la tabla
   const [search, setSearch] = useState("");
   const [filterEstado, setFilterEstado] = useState("Todos");
+  const [filterEmpresaList, setFilterEmpresaList] = useState("TODAS"); // NUEVO FILTRO
+  
   const logoInputRef = useRef(null);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => { setUser(u); setAuthLoading(false); });
-    return unsub;
+    const handleOnline = () => { setIsOnline(true); toast.success("Conexión restablecida."); };
+    const handleOffline = () => { setIsOnline(false); toast.error("Sin internet. Trabajando offline."); };
+    window.addEventListener("online", handleOnline); window.addEventListener("offline", handleOffline);
+    return () => { window.removeEventListener("online", handleOnline); window.removeEventListener("offline", handleOffline); };
   }, []);
 
-  const loadData = useCallback(async () => {
-    setLoadingData(true);
-    
-    const fetchSafe = async (q) => {
-      try {
-        const snap = await getDocs(q);
-        return snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      } catch (e) {
-        console.error("Error cargando colección:", e);
-        return [];
+  useEffect(() => {
+    return onAuthStateChanged(auth, async (u) => {
+      setUser(u);
+      if (u) {
+        try {
+          const roleDoc = await getDoc(doc(db, "userRoles", u.email.toLowerCase()));
+          if (roleDoc.exists()) {
+            const assignedRole = roleDoc.data().rol;
+            const assignedEmpresa = roleDoc.data().empresaRut || "TODAS";
+            
+            setUserRole(assignedRole);
+            setUserEmpresa(assignedEmpresa);
+            
+            if (assignedRole === "Operador") setView("tarjas");
+            else setView("workers_list");
+          } else {
+            setUserRole("Desconocido"); 
+            setUserEmpresa(null);
+          }
+        } catch (error) {
+          console.error("Acceso al rol denegado:", error);
+          setUserRole("Desconocido");
+          setUserEmpresa(null);
+        }
+      } else {
+        setUserRole(null);
+        setUserEmpresa(null);
       }
+      setAuthLoading(false);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!user || userRole === "Desconocido" || userRole === null || userEmpresa === null) return;
+    setLoadingData(true);
+
+    const unsubs = [];
+    const handleError = (error) => {
+      console.warn("Filtro de seguridad actuando:", error.message);
+      if (error.code === "permission-denied") setUserRole("Desconocido");
     };
 
-    const qw = query(collection(db, "workers"), orderBy("creadoEn", "desc"));
-    const qc = query(collection(db, "contractors"), orderBy("creadoEn", "desc"));
-    const qcred = query(collection(db, "credentials"), orderBy("creadoEn", "desc"));
-    const qcampos = query(collection(db, "campos"), orderBy("creadoEn", "desc"));
+    let qcampos = collection(db, "campos");
+    let qworkers = collection(db, "workers");
+    let qcontractors = collection(db, "contractors");
+    let qcred = collection(db, "credentials");
 
-    const [w, c, cred, cam] = await Promise.all([
-      fetchSafe(qw), fetchSafe(qc), fetchSafe(qcred), fetchSafe(qcampos)
-    ]);
-    
-    setWorkers(w);
-    setContractors(c);
-    setCredentials(cred);
-    setCamposList(cam);
+    if (userEmpresa !== "TODAS") {
+      qcampos = query(qcampos, where("empresaRut", "==", userEmpresa));
+      qworkers = query(qworkers, where("empresaRut", "==", userEmpresa));
+      qcontractors = query(qcontractors, where("empresaRut", "==", userEmpresa));
+      qcred = query(qcred, where("empresaRut", "==", userEmpresa));
+    }
+
+    unsubs.push(onSnapshot(qcampos, snap => {
+      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      docs.sort((a,b) => (b.creadoEn?.seconds || 0) - (a.creadoEn?.seconds || 0));
+      setCamposList(docs.filter(i => !i.eliminado));
+    }, handleError));
+
+    if (userRole === "Admin" || userRole === "Supervisor") {
+      unsubs.push(onSnapshot(qworkers, snap => {
+        const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        docs.sort((a,b) => (b.creadoEn?.seconds || 0) - (a.creadoEn?.seconds || 0));
+        setWorkers(docs);
+      }, handleError));
+      unsubs.push(onSnapshot(qcontractors, snap => {
+        const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        docs.sort((a,b) => (b.creadoEn?.seconds || 0) - (a.creadoEn?.seconds || 0));
+        setContractors(docs);
+      }, handleError));
+      
+      unsubs.push(onSnapshot(qcred, snap => {
+        const docs = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(i => !i.eliminado);
+        docs.sort((a,b) => (b.creadoEn?.seconds || 0) - (a.creadoEn?.seconds || 0));
+        setCredentials(docs);
+      }, handleError));
+    }
+
+    if (userRole === "Admin") {
+      const qroles = query(collection(db, "userRoles"));
+      unsubs.push(onSnapshot(qroles, snap => {
+        const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        docs.sort((a,b) => (b.creadoEn?.seconds || 0) - (a.creadoEn?.seconds || 0));
+        setRolesList(docs);
+      }, handleError));
+    }
 
     setLoadingData(false);
-  }, []);
+    return () => unsubs.forEach(unsub => unsub());
+  }, [user, userRole, userEmpresa]);
 
-  useEffect(() => { if (user) loadData(); }, [user, loadData]);
+  const handleLogin = async () => { try { await signInWithPopup(auth, googleProvider); } catch (e) { toast.error("Error al ingresar"); } };
+  const handleLogout = async () => { await signOut(auth); setView("tarjas"); setUserRole(null); setUserEmpresa(null); };
 
-  const handleLogin = async () => { try { await signInWithPopup(auth, googleProvider); } catch (e) { alert("Error: " + e.message); } };
-  const handleLogout = async () => { await signOut(auth); setWorkers([]); setContractors([]); setCredentials([]); setCamposList([]); setView("workers_list"); };
   const handleLogoUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -853,210 +682,201 @@ export default function App() {
     reader.readAsDataURL(file);
   };
 
-  const handleSaveCampo = async (data, id) => {
+  const handleBulkUploadCredentials = async (credsArray, targetEmpresa) => {
     setLoadingData(true);
     try {
-      if (id) {
-        await updateDoc(doc(db, "campos", id), { ...data, actualizadoEn: serverTimestamp() });
-      } else {
-        await addDoc(collection(db, "campos"), { ...data, creadoEn: serverTimestamp() });
-      }
-      await loadData();
-    } catch (error) { alert("Error al guardar el campo: " + error.message); }
+      const batch = writeBatch(db);
+      credsArray.forEach(cred => {
+        const docRef = doc(collection(db, "credentials"));
+        batch.set(docRef, { folio: cred.folio, codigo: cred.codigo, empresaRut: targetEmpresa, estado: "Disponible", asignadoA: null, creadoEn: serverTimestamp(), eliminado: false });
+      });
+      await batch.commit();
+      toast.success("Credenciales inyectadas al bolsillo de la empresa");
+    } catch (error) { toast.error("Error al cargar códigos: " + error.message); }
+    setLoadingData(false);
+  };
+
+  const handleDeleteCredential = async (id) => {
+    if (!window.confirm("¿Seguro que deseas borrar esta credencial?")) return;
+    setLoadingData(true);
+    try {
+      await updateDoc(doc(db, "credentials", id), { eliminado: true, eliminadoEn: serverTimestamp() });
+      toast.success("Credencial eliminada");
+    } catch (e) {
+      toast.error("Error al eliminar: " + e.message);
+    }
+    setLoadingData(false);
+  };
+
+  const handleSaveUserRole = async (emailToSave, rolToSave, empresaRutToSave) => {
+    try { 
+      await setDoc(doc(db, "userRoles", emailToSave), { rol: rolToSave, empresaRut: empresaRutToSave, creadoEn: serverTimestamp() }); 
+      toast.success(`Acceso guardado para ${emailToSave}`); 
+    } catch (e) { toast.error("Error al guardar usuario"); }
+  };
+
+  const handleDeleteUserRole = async (emailToDelete) => {
+    if (emailToDelete === user.email.toLowerCase()) return toast.error("No puedes revocar tu propio acceso.");
+    if(!window.confirm(`¿Quitar el acceso a ${emailToDelete}?`)) return;
+    await deleteDoc(doc(db, "userRoles", emailToDelete)); toast.success("Acceso revocado");
+  };
+
+  const handleSaveCampo = async (data, id) => {
+    setLoadingData(true);
+    const finalData = { ...data, empresaRut: userEmpresa !== "TODAS" ? userEmpresa : data.empresaRut };
+    try {
+      if (id) { await updateDoc(doc(db, "campos", id), { ...finalData, actualizadoEn: serverTimestamp() }); toast.success("Centro actualizado"); } 
+      else { await addDoc(collection(db, "campos"), { ...finalData, creadoEn: serverTimestamp() }); toast.success("Centro registrado"); }
+    } catch (error) { toast.error("Error al guardar: " + error.message); }
     setLoadingData(false);
   };
 
   const handleDeleteCampo = async (id) => {
-    if (!window.confirm("¿Seguro que deseas eliminar este Centro de Costo?")) return;
-    setLoadingData(true);
-    await deleteDoc(doc(db, "campos", id));
-    await loadData();
-    setLoadingData(false);
+    if (!window.confirm("¿Seguro que deseas ocultar este Centro de Costo?")) return;
+    setLoadingData(true); try { await updateDoc(doc(db, "campos", id), { eliminado: true, eliminadoEn: serverTimestamp() }); toast.success("Centro ocultado"); } catch (e) { toast.error("Error: " + e.message); } setLoadingData(false);
   };
 
   const handleSaveWorker = async (form) => {
     const q = query(collection(db, "workers"), where("rut", "==", form.rut));
     const snap = await getDocs(q);
-    if (!editTarget && !snap.empty) throw new Error("El RUT ya está registrado.");
-    if (editTarget && snap.docs.find(doc => doc.id !== editTarget.id)) throw new Error("El RUT belongs to another worker.");
-
-    let finalForm = { ...form };
-
+    if (!editTarget && !snap.empty) throw new Error("RUT ya registrado.");
+    
+    let finalForm = { ...form, empresaRut: userEmpresa !== "TODAS" ? userEmpresa : form.empresaRut };
+    const targetRut = finalForm.empresaRut;
+    
     if (!editTarget) {
-      const availableCredentials = credentials
-        .filter(c => c.estado === "Disponible")
-        .sort((a, b) => String(a.folio).localeCompare(String(b.folio), undefined, { numeric: true, sensitivity: 'base' }));
-
+      const availableCredentials = credentials.filter(c => c.estado === "Disponible" && c.empresaRut === targetRut).sort((a, b) => String(a.folio).localeCompare(String(b.folio), undefined, { numeric: true, sensitivity: 'base' }));
       if (availableCredentials.length > 0) {
-        const nextCred = availableCredentials[0];
-        finalForm.codigoQR = nextCred.codigo;
-        finalForm.folioQR = nextCred.folio;
+        const nextCred = availableCredentials[0]; finalForm.codigoQR = nextCred.codigo; finalForm.folioQR = nextCred.folio;
         await updateDoc(doc(db, "credentials", nextCred.id), { estado: "Asignado", asignadoA: form.rut, actualizadoEn: serverTimestamp() });
-      } else {
-        finalForm.codigoQR = generateWorkerCode();
-        finalForm.folioQR = "V-AUTO-" + Math.floor(Math.random() * 10000);
-      }
-
-      await addDoc(collection(db, "workers"), { ...finalForm, creadoEn: serverTimestamp(), actualizadoEn: serverTimestamp() });
-
+      } else { finalForm.codigoQR = generateWorkerCode(); finalForm.folioQR = "V-AUTO-" + Math.floor(Math.random() * 10000); }
+      await addDoc(collection(db, "workers"), { ...finalForm, creadoEn: serverTimestamp() }); toast.success("Trabajador registrado");
     } else {
       if (form.estado === "Inactivo" && editTarget.codigoQR) {
-        const credDoc = credentials.find(c => c.codigo === editTarget.codigoQR);
-        if (credDoc) {
-          await updateDoc(doc(db, "credentials", credDoc.id), { estado: "Disponible", asignadoA: null, actualizadoEn: serverTimestamp() });
-        } else {
-          await addDoc(collection(db, "credentials"), { folio: editTarget.folioQR || "RECICLADO-" + Math.floor(Math.random() * 1000), codigo: editTarget.codigoQR, estado: "Disponible", asignadoA: null, creadoEn: serverTimestamp() });
-        }
-        finalForm.codigoQR = null;
-        finalForm.folioQR = null;
-      }
-      else if (form.estado === "Activo" && editTarget.estado === "Inactivo" && !editTarget.codigoQR) {
-        const today = new Date();
-        finalForm.fechaIngreso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-
-        const availableCredentials = credentials
-          .filter(c => c.estado === "Disponible")
-          .sort((a, b) => String(a.folio).localeCompare(String(b.folio), undefined, { numeric: true, sensitivity: 'base' }));
-
+        const credDoc = credentials.find(c => c.codigo === editTarget.codigoQR && c.empresaRut === targetRut);
+        if (credDoc) { await updateDoc(doc(db, "credentials", credDoc.id), { estado: "Disponible", asignadoA: null, actualizadoEn: serverTimestamp() }); } 
+        else { await addDoc(collection(db, "credentials"), { folio: editTarget.folioQR || "RECICLADO-" + Math.floor(Math.random() * 1000), codigo: editTarget.codigoQR, empresaRut: targetRut, estado: "Disponible", asignadoA: null, creadoEn: serverTimestamp(), eliminado: false }); }
+        finalForm.codigoQR = null; finalForm.folioQR = null;
+      } else if (form.estado === "Activo" && editTarget.estado === "Inactivo" && !editTarget.codigoQR) {
+        const today = new Date(); finalForm.fechaIngreso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+        const availableCredentials = credentials.filter(c => c.estado === "Disponible" && c.empresaRut === targetRut).sort((a, b) => String(a.folio).localeCompare(String(b.folio), undefined, { numeric: true, sensitivity: 'base' }));
         if (availableCredentials.length > 0) {
-          const nextCred = availableCredentials[0];
-          finalForm.codigoQR = nextCred.codigo;
-          finalForm.folioQR = nextCred.folio;
+          const nextCred = availableCredentials[0]; finalForm.codigoQR = nextCred.codigo; finalForm.folioQR = nextCred.folio;
           await updateDoc(doc(db, "credentials", nextCred.id), { estado: "Asignado", asignadoA: form.rut, actualizadoEn: serverTimestamp() });
-        } else {
-          finalForm.codigoQR = generateWorkerCode();
-          finalForm.folioQR = "V-AUTO-" + Math.floor(Math.random() * 10000);
-        }
+        } else { finalForm.codigoQR = generateWorkerCode(); finalForm.folioQR = "V-AUTO-" + Math.floor(Math.random() * 10000); }
       }
-
-      await updateDoc(doc(db, "workers", editTarget.id), { ...finalForm, actualizadoEn: serverTimestamp() });
+      await updateDoc(doc(db, "workers", editTarget.id), { ...finalForm, actualizadoEn: serverTimestamp() }); toast.success("Ficha actualizada");
     }
-
-    await loadData(); 
-    setView("workers_list"); 
-    setEditTarget(null);
+    setView("workers_list"); setEditTarget(null);
   };
 
   const handleSaveContractor = async (form) => {
-    const q = query(collection(db, "contractors"), where("rut", "==", form.rut));
-    const snap = await getDocs(q);
-    if (!editTarget && !snap.empty) throw new Error("La empresa con este RUT ya existe.");
-    if (editTarget && snap.docs.find(doc => doc.id !== editTarget.id)) throw new Error("El RUT pertenece a otra empresa.");
-
-    if (editTarget) {
-      await updateDoc(doc(db, "contractors", editTarget.id), { ...form, actualizadoEn: serverTimestamp() });
-    } else {
-      await addDoc(collection(db, "contractors"), { ...form, creadoEn: serverTimestamp(), actualizadoEn: serverTimestamp() });
-    }
-    await loadData(); setView("contractors_list"); setEditTarget(null);
+    let finalForm = { ...form, empresaRut: userEmpresa !== "TODAS" ? userEmpresa : form.empresaRut };
+    if (editTarget) { await updateDoc(doc(db, "contractors", editTarget.id), { ...finalForm, actualizadoEn: serverTimestamp() }); toast.success("Contratista actualizado"); } 
+    else { await addDoc(collection(db, "contractors"), { ...finalForm, creadoEn: serverTimestamp() }); toast.success("Contratista registrado"); }
+    setView("contractors_list"); setEditTarget(null);
   };
 
   const handleToggleEstado = async (item, collectionName) => {
     const nuevoEstado = item.estado === "Activo" ? "Inactivo" : "Activo";
-    setLoadingData(true);
-    try {
-      if (collectionName === "workers") {
-        if (nuevoEstado === "Activo") {
-          if (!window.confirm(`¿Seguro que deseas Reactivar a ${item.nombre}? Su fecha de ingreso se actualizará a hoy.`)) {
-            setLoadingData(false); return;
-          }
-
-          const today = new Date();
-          const fechaHoy = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-          let updates = { estado: nuevoEstado, fechaIngreso: fechaHoy, actualizadoEn: serverTimestamp() };
-
-          if (!item.codigoQR) {
-            const availableCredentials = credentials
-              .filter(c => c.estado === "Disponible")
-              .sort((a, b) => String(a.folio).localeCompare(String(b.folio), undefined, { numeric: true, sensitivity: 'base' }));
-
-            if (availableCredentials.length > 0) {
-              const nextCred = availableCredentials[0];
-              updates.codigoQR = nextCred.codigo;
-              updates.folioQR = nextCred.folio;
-              await updateDoc(doc(db, "credentials", nextCred.id), { estado: "Asignado", asignadoA: item.rut, actualizadoEn: serverTimestamp() });
-            } else {
-              updates.codigoQR = generateWorkerCode();
-              updates.folioQR = "V-AUTO-" + Math.floor(Math.random() * 10000);
-            }
-          }
-          await updateDoc(doc(db, collectionName, item.id), updates);
-        } else {
-          if (!window.confirm(`¿Seguro que deseas Desactivar a ${item.nombre}?`)) {
-            setLoadingData(false); return;
-          }
-
-          if (item.codigoQR) {
-            const credDoc = credentials.find(c => c.codigo === item.codigoQR);
-            if (credDoc) {
-              await updateDoc(doc(db, "credentials", credDoc.id), { estado: "Disponible", asignadoA: null, actualizadoEn: serverTimestamp() });
-            } else {
-              await addDoc(collection(db, "credentials"), { folio: item.folioQR || "RECICLADO-" + Math.floor(Math.random() * 1000), codigo: item.codigoQR, estado: "Disponible", asignadoA: null, creadoEn: serverTimestamp() });
-            }
-          }
-
-          await updateDoc(doc(db, collectionName, item.id), { estado: nuevoEstado, codigoQR: null, folioQR: null, actualizadoEn: serverTimestamp() });
+    
+    if (collectionName === "workers") {
+      const targetRut = item.empresaRut || userEmpresa;
+      if (nuevoEstado === "Activo") {
+        if (!window.confirm(`¿Seguro que deseas Reactivar a ${item.nombre}? Su fecha de ingreso se actualizará a hoy.`)) return;
+        const today = new Date(); const fechaHoy = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+        let updates = { estado: nuevoEstado, fechaIngreso: fechaHoy, actualizadoEn: serverTimestamp() };
+        if (!item.codigoQR) {
+          const availableCredentials = credentials.filter(c => c.estado === "Disponible" && c.empresaRut === targetRut).sort((a, b) => String(a.folio).localeCompare(String(b.folio), undefined, { numeric: true, sensitivity: 'base' }));
+          if (availableCredentials.length > 0) {
+            const nextCred = availableCredentials[0]; updates.codigoQR = nextCred.codigo; updates.folioQR = nextCred.folio;
+            await updateDoc(doc(db, "credentials", nextCred.id), { estado: "Asignado", asignadoA: item.rut, actualizadoEn: serverTimestamp() });
+          } else { updates.codigoQR = generateWorkerCode(); updates.folioQR = "V-AUTO-" + Math.floor(Math.random() * 10000); }
         }
+        await updateDoc(doc(db, collectionName, item.id), updates);
       } else {
-        await updateDoc(doc(db, collectionName, item.id), { estado: nuevoEstado, actualizadoEn: serverTimestamp() });
+        if (!window.confirm(`¿Seguro que deseas Desactivar a ${item.nombre}? Su credencial quedará libre para su empresa.`)) return;
+        if (item.codigoQR) {
+          const credDoc = credentials.find(c => c.codigo === item.codigoQR && c.empresaRut === targetRut);
+          if (credDoc) { await updateDoc(doc(db, "credentials", credDoc.id), { estado: "Disponible", asignadoA: null, actualizadoEn: serverTimestamp() }); } 
+          else { await addDoc(collection(db, "credentials"), { folio: item.folioQR || "RECICLADO-" + Math.floor(Math.random() * 1000), codigo: item.codigoQR, empresaRut: targetRut, estado: "Disponible", asignadoA: null, creadoEn: serverTimestamp(), eliminado: false }); }
+        }
+        await updateDoc(doc(db, collectionName, item.id), { estado: nuevoEstado, codigoQR: null, folioQR: null, actualizadoEn: serverTimestamp() });
       }
-    } catch (e) { alert("Hubo un error al cambiar el estado: " + e.message); }
-
-    await loadData();
-    setLoadingData(false);
+    } else {
+      await updateDoc(doc(db, collectionName, item.id), { estado: nuevoEstado, actualizadoEn: serverTimestamp() });
+    }
+    toast.success("Estado actualizado");
   };
 
   const isWorkerView = view.includes("workers");
   const listToFilter = isWorkerView ? workers : contractors;
-  
   const filteredList = listToFilter.filter((item) => {
     const q = search.toLowerCase();
-    const matchesSearch = !q || 
-      item.nombre?.toLowerCase().includes(q) || 
-      item.rut?.toLowerCase().includes(q) || 
-      item.apellido?.toLowerCase().includes(q) || 
-      item.contratista?.toLowerCase().includes(q) ||
-      item.folioQR?.toLowerCase().includes(q); 
+    const matchesSearch = !q || item.nombre?.toLowerCase().includes(q) || item.rut?.toLowerCase().includes(q) || item.apellido?.toLowerCase().includes(q) || item.contratista?.toLowerCase().includes(q) || item.folioQR?.toLowerCase().includes(q); 
     const matchesEstado = filterEstado === "Todos" || item.estado === filterEstado;
-    return matchesSearch && matchesEstado;
+    const matchesEmpresa = filterEmpresaList === "TODAS" || item.empresaRut === filterEmpresaList; // 🔥 FILTRO APLICADO
+    return matchesSearch && matchesEstado && matchesEmpresa;
   });
 
-  if (authLoading) return <div className="splash"><div className="splash-spinner" /></div>;
-
-  if (!user) {
-    return (
-      <div className="login-screen">
-        <div className="login-card">
-          <img src="/logo.png" alt="Logo Corporativo" className="login-logo" />
-          <h1 className="login-title">AgroTrack</h1>
-          <p className="login-sub">Control de trazabilidad, personal y cosecha</p>
-          <button className="btn-google" onClick={handleLogin}>Ingresar con Google</button>
-        </div>
+  if (authLoading || (user && userRole === null)) return <div className="splash"><div className="splash-spinner" /></div>;
+  if (!user) return (
+    <div className="login-screen">
+      <Toaster position="top-center" />
+      <div className="login-card">
+        <img src="/logo.png" alt="Logo Corporativo" className="login-logo" />
+        <h1 className="login-title">Control de Campo</h1>
+        <p className="login-sub">Control de trazabilidad, personal y cosecha</p>
+        <button className="btn-google" onClick={handleLogin}>Ingresar con Google</button>
       </div>
-    );
-  }
+    </div>
+  );
+  if (userRole === "Desconocido") return (
+    <div className="login-screen">
+      <div className="login-card" style={{ borderTop: "4px solid #ef4444" }}>
+        <h1 className="login-title" style={{color: "#ef4444"}}>Acceso Denegado</h1>
+        <p className="login-sub">El correo <b>{user.email}</b> no está autorizado en el sistema.</p>
+        <button className="btn-secondary" onClick={handleLogout} style={{marginTop: "20px"}}>Cerrar Sesión</button>
+      </div>
+    </div>
+  );
+
+  const empresasDisponiblesPanel = userEmpresa === "TODAS" ? EMPRESAS_MAESTRAS : EMPRESAS_MAESTRAS.filter(e => e.rut === userEmpresa);
 
   return (
     <div className="app-layout">
-      <TopBar user={user} onLogout={handleLogout} />
+      <Toaster position="top-center" />
+      <TopBar user={user} userRole={userRole} onLogout={handleLogout} isOnline={isOnline} />
 
       <main className="main-content" style={{ padding: "20px" }}>
         
         <div className="view-tabs" style={{ display: "flex", gap: "10px", marginBottom: "25px", borderBottom: "2px solid #e2e8f0", paddingBottom: "12px", flexWrap: "wrap" }}>
-          <button onClick={() => { setView("workers_list"); setSearch(""); setEditTarget(null); }} style={{ padding: "10px 20px", border: "none", borderRadius: "6px", backgroundColor: view.includes("workers") ? "#101c38" : "#f1f5f9", color: view.includes("workers") ? "#ffffff" : "#475569", cursor: "pointer", fontWeight: "600", fontSize: "14px", transition: "all 0.2s" }}>👥 Personal</button>
-          <button onClick={() => { setView("contractors_list"); setSearch(""); setEditTarget(null); }} style={{ padding: "10px 20px", border: "none", borderRadius: "6px", backgroundColor: view.includes("contractors") ? "#101c38" : "#f1f5f9", color: view.includes("contractors") ? "#ffffff" : "#475569", cursor: "pointer", fontWeight: "600", fontSize: "14px", transition: "all 0.2s" }}>🏢 Contratistas</button>
-          <button onClick={() => { setView("credentials_list"); setSearch(""); setEditTarget(null); }} style={{ padding: "10px 20px", border: "none", borderRadius: "6px", backgroundColor: view === "credentials_list" ? "#101c38" : "#f1f5f9", color: view === "credentials_list" ? "#ffffff" : "#475569", cursor: "pointer", fontWeight: "600", fontSize: "14px", transition: "all 0.2s" }}>🪪 Gestión Credenciales</button>
+          {(userRole === "Admin" || userRole === "Supervisor") && (
+            <>
+              <button onClick={() => { setView("workers_list"); setSearch(""); setEditTarget(null); }} style={{ padding: "10px 20px", border: "none", borderRadius: "6px", backgroundColor: view.includes("workers") ? "#101c38" : "#f1f5f9", color: view.includes("workers") ? "#ffffff" : "#475569", cursor: "pointer", fontWeight: "600", fontSize: "14px", transition: "all 0.2s" }}>👥 Personal</button>
+              <button onClick={() => { setView("contractors_list"); setSearch(""); setEditTarget(null); }} style={{ padding: "10px 20px", border: "none", borderRadius: "6px", backgroundColor: view.includes("contractors") ? "#101c38" : "#f1f5f9", color: view.includes("contractors") ? "#ffffff" : "#475569", cursor: "pointer", fontWeight: "600", fontSize: "14px", transition: "all 0.2s" }}>🏢 Contratistas</button>
+            </>
+          )}
+
           <button onClick={() => { setView("tarjas"); setSearch(""); setEditTarget(null); }} style={{ padding: "10px 20px", border: "none", borderRadius: "6px", backgroundColor: view === "tarjas" ? "#16a34a" : "#f1f5f9", color: view === "tarjas" ? "#ffffff" : "#475569", cursor: "pointer", fontWeight: "600", fontSize: "14px", transition: "all 0.2s" }}>🏷️ Tarjas de Cosecha</button>
-          <button onClick={() => { setView("campos"); setSearch(""); setEditTarget(null); }} style={{ padding: "10px 20px", border: "none", borderRadius: "6px", backgroundColor: view === "campos" ? "#b45309" : "#f1f5f9", color: view === "campos" ? "#ffffff" : "#475569", cursor: "pointer", fontWeight: "600", fontSize: "14px", transition: "all 0.2s" }}>📍 Campos y C. Costo</button>
+          
+          {userRole === "Admin" && (
+            <>
+              <button onClick={() => { setView("campos"); setSearch(""); setEditTarget(null); }} style={{ padding: "10px 20px", border: "none", borderRadius: "6px", backgroundColor: view === "campos" ? "#b45309" : "#f1f5f9", color: view === "campos" ? "#ffffff" : "#475569", cursor: "pointer", fontWeight: "600", fontSize: "14px", transition: "all 0.2s" }}>📍 Campos y C. Costo</button>
+              {userEmpresa === "TODAS" && <button onClick={() => { setView("credentials_list"); setSearch(""); setEditTarget(null); }} style={{ padding: "10px 20px", border: "none", borderRadius: "6px", backgroundColor: view === "credentials_list" ? "#101c38" : "#f1f5f9", color: view === "credentials_list" ? "#ffffff" : "#475569", cursor: "pointer", fontWeight: "600", fontSize: "14px", transition: "all 0.2s" }}>🪪 Gestión Credenciales</button>}
+              <button onClick={() => { setView("users"); setSearch(""); setEditTarget(null); }} style={{ padding: "10px 20px", border: "none", borderRadius: "6px", backgroundColor: view === "users" ? "#ef4444" : "#f1f5f9", color: view === "users" ? "#ffffff" : "#475569", cursor: "pointer", fontWeight: "600", fontSize: "14px", transition: "all 0.2s" }}>🛡️ Usuarios</button>
+            </>
+          )}
         </div>
 
-        {view === "workers_form" && <WorkerForm onSave={handleSaveWorker} onCancel={() => { setView("workers_list"); setEditTarget(null); }} initial={editTarget} contractorsList={contractors} credentialsList={credentials} />}
-        {view === "contractors_form" && <ContractorForm onSave={handleSaveContractor} onCancel={() => { setView("contractors_list"); setEditTarget(null); }} initial={editTarget} />}
-        {view === "credentials_list" && <CredentialsManager credentialsList={credentials} onBulkUpload={handleBulkUploadCredentials} onDelete={handleDeleteCredential} loading={loadingData} />}
-        {view === "campos" && <CamposManager camposList={camposList} onSave={handleSaveCampo} onDelete={handleDeleteCampo} loading={loadingData} />}
-        {view === "tarjas" && <TarjasManager camposList={camposList} />}
+        {view === "workers_form" && <WorkerForm onSave={handleSaveWorker} onCancel={() => setView("workers_list")} initial={editTarget} contractorsList={contractors} credentialsList={credentials} userEmpresa={userEmpresa} />}
+        {view === "contractors_form" && <ContractorForm onSave={handleSaveContractor} onCancel={() => setView("contractors_list")} initial={editTarget} userEmpresa={userEmpresa} />}
+        {view === "tarjas" && <TarjasManager camposList={camposList} empresasMaestras={empresasDisponiblesPanel} />}
+        {view === "campos" && userRole === "Admin" && <CamposManager camposList={camposList} onSave={handleSaveCampo} onDelete={handleDeleteCampo} loading={loadingData} empresasMaestras={empresasDisponiblesPanel} userEmpresa={userEmpresa} />}
+        {view === "users" && userRole === "Admin" && <UsersManager rolesList={rolesList} onSaveUser={handleSaveUserRole} onDeleteUser={handleDeleteUserRole} />}
+        {view === "credentials_list" && userRole === "Admin" && userEmpresa === "TODAS" && <CredentialsManager credentialsList={credentials} onBulkUpload={handleBulkUploadCredentials} onDelete={handleDeleteCredential} loading={loadingData} userEmpresa={userEmpresa} />}
 
-        {(view === "workers_list" || view === "contractors_list") && (
+        {(view === "workers_list" || view === "contractors_list") && (userRole === "Admin" || userRole === "Supervisor") && (
           <>
             <div className="stats-row">
               <div className="stat-card"><div className="stat-label">Total {isWorkerView ? "Trabajadores" : "Empresas"}</div><div className="stat-num">{listToFilter.length}</div></div>
@@ -1069,9 +889,18 @@ export default function App() {
             </div>
 
             <div className="toolbar">
-              <input className="search-input" placeholder={isWorkerView ? "Buscar trabajador por nombre, RUT, folio..." : "Buscar contratista por empresa, RUT..."} value={search} onChange={(e) => setSearch(e.target.value)} />
+              <input className="search-input" placeholder={isWorkerView ? "Buscar trabajador..." : "Buscar contratista..."} value={search} onChange={(e) => setSearch(e.target.value)} />
+              
+              {/* 🔥 NUEVO FILTRO POR EMPRESA (Solo para el Súper Admin) 🔥 */}
+              {userEmpresa === "TODAS" && (
+                <select className="filter-select" value={filterEmpresaList} onChange={(e) => setFilterEmpresaList(e.target.value)}>
+                  <option value="TODAS">Todas las Empresas</option>
+                  {EMPRESAS_MAESTRAS.map(emp => <option key={emp.rut} value={emp.rut}>{emp.nombre.replace("AGRICOLA ", "")}</option>)}
+                </select>
+              )}
+
               <select className="filter-select" value={filterEstado} onChange={(e) => setFilterEstado(e.target.value)}>
-                <option value="Todos">Todos</option><option value="Activo">Activos</option><option value="Inactivo">Inactivos</option>
+                <option value="Todos">Todos los Estados</option><option value="Activo">Activos</option><option value="Inactivo">Inactivos</option>
               </select>
               <button className="btn-primary" onClick={() => { setEditTarget(null); setView(isWorkerView ? "workers_form" : "contractors_form"); }}>+ Nuevo {isWorkerView ? "Trabajador" : "Contratista"}</button>
             </div>
@@ -1087,6 +916,8 @@ export default function App() {
                     <tr>
                       <th>RUT</th>
                       <th>Nombre</th>
+                      {/* 🔥 NUEVA COLUMNA DE EMPRESA 🔥 */}
+                      {userEmpresa === "TODAS" && <th>Empresa</th>}
                       {isWorkerView ? <th>Contratista</th> : <th>Contacto</th>}
                       {isWorkerView && <th>Folio Credencial</th>}
                       <th>Estado</th>
@@ -1094,10 +925,20 @@ export default function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredList.map((item) => (
+                    {filteredList.map((item) => {
+                      const empAsociada = EMPRESAS_MAESTRAS.find(e => e.rut === item.empresaRut);
+                      return (
                       <tr key={item.id}>
                         <td className="cell-mono">{formatRut(item.rut)}</td>
                         <td className="cell-name">{item.nombre} {isWorkerView ? item.apellido : ""}</td>
+                        
+                        {/* Renderizado del nombre de la empresa para el Super Admin */}
+                        {userEmpresa === "TODAS" && (
+                          <td style={{ fontSize: "12px", fontWeight: "600", color: "#475569" }}>
+                            {empAsociada ? empAsociada.nombre.replace("AGRICOLA ", "") : "—"}
+                          </td>
+                        )}
+
                         <td>{isWorkerView ? (item.contratista || "—") : (item.contacto || "—")}</td>
                         
                         {isWorkerView && (
@@ -1119,7 +960,7 @@ export default function App() {
                           </button>
                         </td>
                       </tr>
-                    ))}
+                    )})}
                   </tbody>
                 </table>
               </div>
@@ -1133,14 +974,16 @@ export default function App() {
   );
 }
 
-function TopBar({ user, onLogout }) {
+function TopBar({ user, userRole, onLogout, isOnline }) {
   return (
     <header className="topbar">
       <div className="topbar-brand">
         <img src="/logo.png" alt="Logo Corporativo" className="topbar-logo" />
-        <span className="topbar-title">AgroTrack</span>
+        <span className="topbar-title">Control de Campo</span>
       </div>
       <div className="topbar-user">
+        {!isOnline && <span style={{ background: "#ef4444", color: "white", padding: "4px 10px", borderRadius: "12px", fontSize: "11px", fontWeight: "bold", marginRight: "12px" }}>📵 OFFLINE</span>}
+        <span style={{color: "#8ba2c4", fontSize: "11px", fontWeight: "bold", marginRight: "10px", textTransform: "uppercase"}}>{userRole}</span>
         <img src={user.photoURL} alt={user.displayName} className="user-avatar" />
         <span className="user-name">{user.displayName}</span>
         <button className="btn-logout" onClick={onLogout}>Salir</button>

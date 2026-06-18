@@ -1,0 +1,3155 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+.gitignore
+package.json
+public/_redirects
+public/index.html
+public/logo.png
+public/manifest.json
+README.md
+src/App - copia.js
+src/App.css
+src/App.js
+src/components/CamposManager.jsx
+src/components/TarjasManager.jsx
+src/firebase.js
+src/index.js
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="public/manifest.json">
+{
+  "short_name": "AgroTrack",
+  "name": "AgroTrack: Sistema de Cosecha",
+  "icons": [
+    {
+      "src": "logo.png",
+      "sizes": "192x192 512x512",
+      "type": "image/png"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#101c38",
+  "background_color": "#ffffff"
+}
+</file>
+
+<file path="src/components/CamposManager.jsx">
+import React, { useState } from "react";
+
+export default function CamposManager({ camposList, onSave, onDelete, loading, empresasMaestras }) {
+  const [empresaRut, setEmpresaRut] = useState(empresasMaestras[0].rut);
+  const [campo, setCampo] = useState("");
+  const [centro, setCentro] = useState("");
+  const [descripcion, setDescripcion] = useState("");
+  const [editId, setEditId] = useState(null);
+
+  const handleSaveClick = () => {
+    if (!campo.trim() || !centro.trim()) {
+      alert("Debes ingresar el nombre del Campo y el Centro de Costo.");
+      return;
+    }
+    
+    onSave({ 
+      empresaRut: empresaRut,
+      campo: campo.toUpperCase().trim(), 
+      centro: centro.toUpperCase().trim(),
+      descripcion: descripcion.trim()
+    }, editId);
+    
+    setCampo("");
+    setCentro(""); 
+    setDescripcion("");
+    setEditId(null);
+  };
+
+  const handleEditClick = (item) => {
+    setEmpresaRut(item.empresaRut || empresasMaestras[0].rut);
+    setCampo(item.campo);
+    setCentro(item.centro);
+    setDescripcion(item.descripcion || "");
+    setEditId(item.id);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleCancelEdit = () => {
+    setEmpresaRut(empresasMaestras[0].rut);
+    setCampo("");
+    setCentro("");
+    setDescripcion("");
+    setEditId(null);
+  };
+
+  const empresaSeleccionada = empresasMaestras.find(e => e.rut === empresaRut) || empresasMaestras[0];
+  const camposFiltrados = camposList.filter(c => {
+    const rutCampo = c.empresaRut || empresasMaestras[0].rut; 
+    return rutCampo === empresaRut;
+  });
+
+  return (
+    <div style={{ maxWidth: "900px", margin: "0 auto", display: "flex", flexDirection: "column", gap: "20px" }}>
+      
+      <div className="form-card">
+        <h3 className="form-title">{editId ? "Editar Campo / Centro de Costo" : "Agregar Campo / Centro de Costo"}</h3>
+        <p style={{ color: "#64748b", fontSize: "14px", marginBottom: "20px" }}>
+          Registra fundos y cuarteles asociándolos estrictamente a su empresa correspondiente para segmentar la emisión de tarjas.
+        </p>
+
+        <div className="form-grid" style={{ marginBottom: "10px", background: "#f8fafc", padding: "20px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+          
+          <div className="form-group" style={{ gridColumn: "1 / -1" }}>
+            <label style={{color:"#b45309", fontWeight:"bold"}}>Selecciona la Empresa para Gestionar *</label>
+            <select value={empresaRut} onChange={e => setEmpresaRut(e.target.value)} style={{ fontWeight: "bold", width: "100%", padding: "10px", border: "2px solid #b45309", borderRadius: "6px" }}>
+              {empresasMaestras.map(emp => (
+                <option key={emp.rut} value={emp.rut}>{emp.nombre}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label>Nombre del Campo / Fundo *</label>
+            <input value={campo} onChange={e => setCampo(e.target.value)} placeholder="Ej: CARMEN ROSA" />
+          </div>
+          <div className="form-group">
+            <label>Centro de Costo / Cuartel *</label>
+            <input value={centro} onChange={e => setCentro(e.target.value)} placeholder="Ej: LOS NOGALES 1" />
+          </div>
+          <div className="form-group" style={{ gridColumn: "1 / -1" }}>
+            <label>Descripción (Opcional)</label>
+            <input value={descripcion} onChange={e => setDescripcion(e.target.value)} placeholder="Sector riego, variedad frutal..." />
+          </div>
+          
+          <div className="form-group" style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px" }}>
+            {editId && <button className="btn-secondary" onClick={handleCancelEdit} disabled={loading}>Cancelar</button>}
+            <button className="btn-primary" onClick={handleSaveClick} disabled={loading}>
+              {loading ? "Guardando..." : (editId ? "💾 Actualizar Información" : "➕ Guardar Centro")}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="form-card">
+        <h3 className="form-title">Centros de Costo: {empresaSeleccionada.nombre.replace("AGRICOLA ", "")} ({camposFiltrados.length})</h3>
+        <div className="table-wrap">
+          <table className="workers-table">
+            <thead>
+              <tr>
+                <th>Campo / Fundo</th>
+                <th>C.Costo (Cuartel)</th>
+                <th>Descripción</th>
+                <th style={{ width: "120px", textAlign: "center" }}>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {camposFiltrados.map(c => {
+                return (
+                  <tr key={c.id} style={{ backgroundColor: editId === c.id ? "#fef9c3" : "transparent" }}>
+                    <td style={{ fontWeight: "bold", color: "#0f172a" }}>{c.campo}</td>
+                    <td>{c.centro}</td>
+                    <td style={{ color: "#64748b", fontSize: "13px" }}>{c.descripcion || "—"}</td>
+                    <td style={{ textAlign: "center" }}>
+                      <button className="btn-action" onClick={() => handleEditClick(c)} title="Editar">✏️</button>
+                      <button className="btn-action btn-action-warn" onClick={() => onDelete(c.id)} title="Eliminar">🗑️</button>
+                    </td>
+                  </tr>
+                );
+              })}
+              {camposFiltrados.length === 0 && (
+                <tr><td colSpan="4" style={{textAlign:"center", color:"#888", padding: "20px"}}>No hay centros de costo registrados para esta empresa.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      
+    </div>
+  );
+}
+</file>
+
+<file path="src/components/TarjasManager.jsx">
+import React, { useState, useEffect } from "react";
+import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp } from "firebase/firestore";
+import { db } from "../firebase"; // Asegúrate de que la ruta sea correcta según tus carpetas
+import QRCode from "qrcode";
+import toast from "react-hot-toast";
+
+export default function TarjasManager({ camposList, empresasMaestras }) {
+  const [empresaIdx, setEmpresaIdx] = useState(0);
+  const [fecha, setFecha] = useState(new Date().toISOString().split("T")[0]);
+  
+  const [campoSeleccionado, setCampoSeleccionado] = useState("");
+  const [centroSeleccionado, setCentroSeleccionado] = useState("");
+  const [corte, setCorte] = useState("");
+  const [cantidad, setCantidad] = useState(10);
+  
+  const [historial, setHistorial] = useState([]);
+  const [inicio, setInicio] = useState(1);
+  const [ultimoCodigo, setUltimoCodigo] = useState("Cargando...");
+  
+  const [tarjas, setTarjas] = useState([]);
+  const [procesando, setProcesando] = useState(false);
+  
+  const [generando, setGenerando] = useState(false);
+  const [progreso, setProgreso] = useState({ actual: 0, total: 0 });
+
+  const empresaActiva = empresasMaestras[empresaIdx] || empresasMaestras[0];
+  const prefijo = empresaActiva.prefijo;
+
+  const listaCamposFiltrados = camposList.filter(c => {
+    if (!c.empresaRut) return empresaActiva.rut === "79.737.880-1"; 
+    return c.empresaRut === empresaActiva.rut;
+  });
+
+  const camposUnicos = [...new Set(listaCamposFiltrados.map(c => c.campo))];
+  const centrosFiltrados = listaCamposFiltrados.filter(c => c.campo === campoSeleccionado).map(c => c.centro);
+
+  // 🔥 AQUÍ ESTÁ EL PARACAÍDAS PARA TARJAS MANAGER 🔥
+  useEffect(() => {
+    const q = query(collection(db, "tarjas_history"), orderBy("creadoEn", "desc"));
+    
+    const unsubscribe = onSnapshot(
+      q, 
+      (snap) => {
+        const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        
+        const historialEmpresa = docs.filter(d => {
+          const docRut = d.empresaRut || "79.737.880-1"; 
+          return docRut === empresaActiva.rut;
+        });
+
+        setHistorial(historialEmpresa);
+
+        let maxFin = 0;
+        historialEmpresa.forEach(d => {
+          if (d.fin && d.fin > maxFin) maxFin = d.fin;
+        });
+        
+        setInicio(maxFin + 1);
+        
+        if (maxFin > 0) {
+          setUltimoCodigo(`bin;${prefijo}${String(maxFin).padStart(4, '0')}`);
+        } else {
+          setUltimoCodigo("Ninguno");
+        }
+      },
+      (error) => {
+        // Atrapamos el error de permisos silenciosamente
+        console.warn("Permisos insuficientes o cargando rol:", error.message);
+        setUltimoCodigo("Sin acceso / Cargando...");
+      }
+    );
+
+    return () => unsubscribe();
+  }, [empresaActiva.rut, prefijo]);
+
+  const generarPrevisualizacion = async () => {
+    if (!campoSeleccionado || !centroSeleccionado || !corte) {
+      toast.error("Selecciona el Campo, Centro de Costo y Corte para previsualizar.");
+      return;
+    }
+    const cantNum = parseInt(cantidad || 0);
+    if (cantNum < 1) {
+      toast.error("La cantidad a imprimir debe ser mayor a 0.");
+      return;
+    }
+
+    setGenerando(true);
+    setProgreso({ actual: 0, total: cantNum });
+    setTarjas([]); 
+
+    const nuevasTarjas = [];
+    const [y, m, d] = fecha.split("-");
+    const fechaStr = `${d}-${m}-${y}`;
+
+    const batchSize = 50;
+
+    for (let i = 0; i < cantNum; i += batchSize) {
+      const batchPromises = [];
+      
+      for (let j = i; j < i + batchSize && j < cantNum; j++) {
+        const numActual = inicio + j;
+        const numStr = String(numActual).padStart(4, '0');
+        const codigoQRData = `bin;${prefijo}${numStr}`;
+        
+        const qrPromise = QRCode.toDataURL(codigoQRData, {
+          width: 300, margin: 0, color: { dark: "#000000", light: "#ffffff" }
+        }).then(qrDataUrl => ({
+          codigo: codigoQRData, 
+          qrUrl: qrDataUrl, 
+          fechaStr, 
+          campo: campoSeleccionado, 
+          centroCosto: centroSeleccionado, 
+          corte 
+        }));
+
+        batchPromises.push(qrPromise);
+      }
+
+      const batchResults = await Promise.all(batchPromises);
+      nuevasTarjas.push(...batchResults);
+      setProgreso({ actual: nuevasTarjas.length, total: cantNum });
+      await new Promise(resolve => setTimeout(resolve, 10)); 
+    }
+
+    setTarjas(nuevasTarjas);
+    setGenerando(false);
+    toast.success(`${cantNum} etiquetas listas para imprimir`);
+  };
+
+  const registrarEImprimirZebra = async () => {
+    if (tarjas.length === 0) {
+      toast.error("Primero debes previsualizar el lote generado.");
+      return;
+    }
+
+    setProcesando(true);
+    const cantNum = parseInt(cantidad || 0);
+    const numFin = inicio + cantNum - 1;
+
+    try {
+      await addDoc(collection(db, "tarjas_history"), {
+        empresa: empresaActiva.nombre,
+        empresaRut: empresaActiva.rut,
+        campo: campoSeleccionado.toUpperCase(),
+        centroCosto: centroSeleccionado.toUpperCase(),
+        fechaCosecha: fecha,
+        corte: corte.toUpperCase(),
+        prefijo: prefijo,
+        inicio: inicio,
+        cantidad: cantNum,
+        fin: numFin,
+        creadoEn: serverTimestamp()
+      });
+      toast.success("Lote registrado en auditoría.");
+    } catch(e) {
+      console.error("Error al guardar historial de tarjas", e);
+      toast.error("Error al guardar el registro en la nube.");
+      setProcesando(false);
+      return;
+    }
+
+    let html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Impresión Zebra</title>
+          <style>
+            * { box-sizing: border-box; margin: 0; padding: 0; }
+            @page { size: 100mm 70mm; margin: 0; padding: 0; }
+            body { font-family: 'Arial', sans-serif; background: #fff; color: #000; width: 100mm; height: 70mm; }
+            @media print {
+              html, body { width: 100mm; height: 70mm; margin: 0; padding: 0; overflow: hidden; }
+              .label { border: none !important; margin: 0 !important; page-break-after: always; page-break-inside: avoid; }
+            }
+            .label { 
+              width: 100mm; height: 70mm; padding: 3mm 4mm; display: flex; flex-direction: column; justify-content: space-between;
+              overflow: hidden; background: #fff; border: 1px dashed #ccc; 
+            }
+            .header { display: flex; justify-content: space-between; font-size: 8pt; font-weight: bold; border-bottom: 0.8mm solid #000; padding-bottom: 1mm; margin-bottom: 1mm;}
+            .sub-header { display: flex; justify-content: space-between; font-size: 10pt; font-weight: bold; border-bottom: 0.8mm solid #000; padding-bottom: 1mm; }
+            .body { display: flex; align-items: center; justify-content: space-between; flex-grow: 1; padding: 2mm 0; height: 42mm; gap: 2mm;}
+            .qr-container { width: 40mm; height: 40mm; display: flex; align-items: center; justify-content: flex-start; flex-shrink: 0;}
+            .qr-img { width: 100%; height: 100%; object-fit: contain; }
+            .text-container { display: flex; align-items: center; justify-content: flex-end; flex-grow: 1; overflow: hidden;}
+            .text-code { font-size: 16pt; font-weight: 900; letter-spacing: 0; text-align: right; word-break: break-all; line-height: 1.1;}
+            .footer { display: flex; justify-content: space-between; font-size: 8pt; font-weight: bold; border-top: 0.8mm solid #000; padding-top: 1mm; margin-top: 1mm;}
+          </style>
+        </head>
+        <body>
+    `;
+    
+    tarjas.forEach(t => {
+      html += `
+        <div class="label">
+          <div>
+            <div class="header">
+              <span>${empresaActiva.nombre.substring(0, 30)}</span>
+              <span>${t.fechaStr}</span>
+            </div>
+            <div class="sub-header">
+              <span>C.COSTO: ${t.centroCosto.substring(0, 15)}</span>
+              <span>CORTE: ${t.corte}</span>
+            </div>
+          </div>
+          <div class="body">
+            <div class="qr-container"><img class="qr-img" src="${t.qrUrl}" alt="QR" /></div>
+            <div class="text-container">
+              <div class="text-code">${t.codigo}</div>
+            </div>
+          </div>
+          <div class="footer">
+            <span>CAMPO: ${t.campo.substring(0, 20)}</span>
+            <span>RUT: ${empresaActiva.rut}</span>
+          </div>
+        </div>
+      `;
+    });
+
+    html += `</body></html>`;
+
+    const printFrame = document.createElement("iframe");
+    printFrame.style.position = "absolute";
+    printFrame.style.width = "0px";
+    printFrame.style.height = "0px";
+    printFrame.style.border = "none";
+    document.body.appendChild(printFrame);
+    
+    const docFrame = printFrame.contentWindow.document;
+    docFrame.open();
+    docFrame.write(html);
+    docFrame.close();
+    
+    setTarjas([]);
+    setProcesando(false);
+    
+    setTimeout(() => {
+      printFrame.contentWindow.focus();
+      printFrame.contentWindow.print();
+      setTimeout(() => document.body.removeChild(printFrame), 1000);
+    }, 500);
+  };
+
+  const numFinVista = inicio + parseInt(cantidad || 0) - 1;
+  const siguienteCodigoVista = `bin;${prefijo}${String(inicio).padStart(4, '0')}`;
+  const finVistaCompleto = `bin;${prefijo}${String(numFinVista).padStart(4, '0')}`;
+
+  return (
+    <div className="form-card" style={{ maxWidth: "1000px", margin: "0 auto" }}>
+      <h3 className="form-title">Generador de Tarjas de Cosecha (Zebra 100x70mm)</h3>
+      <p style={{ color: "#64748b", fontSize: "14px", marginBottom: "20px" }}>
+        Selecciona la empresa emisora para filtrar automáticamente sus campos y centros de costo autorizados. El contador de folios es independiente para cada empresa.
+      </p>
+
+      <div className="form-grid" style={{ marginBottom: "20px", background: "#f8fafc", padding: "20px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+        
+        <div className="form-group" style={{ gridColumn: "1 / -1" }}>
+          <label style={{color:"#16a34a", fontWeight:"bold"}}>Seleccionar Empresa Emisora de Tarja</label>
+          <select value={empresaIdx} onChange={e => { setEmpresaIdx(Number(e.target.value)); setCampoSeleccionado(""); setCentroSeleccionado(""); }} style={{ fontWeight: "bold", width: "100%", padding: "10px", border:"2px solid #16a34a", borderRadius: "6px" }}>
+            {empresasMaestras.map((emp, idx) => (
+              <option key={idx} value={idx}>{emp.nombre} - RUT: {emp.rut}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="form-group"><label>Fecha de Cosecha</label><input type="date" value={fecha} onChange={e => setFecha(e.target.value)} /></div>
+        
+        <div className="form-group">
+          <label>Campo / Fundo ({empresaActiva.nombre.replace("AGRICOLA ","")}) *</label>
+          <input 
+            list="lista-campos" 
+            value={campoSeleccionado} 
+            onChange={e => { setCampoSeleccionado(e.target.value.toUpperCase()); setCentroSeleccionado(""); }} 
+            placeholder="Escribe para buscar campo..." 
+            autoComplete="off"
+          />
+          <datalist id="lista-campos">
+            {camposUnicos.map(c => <option key={c} value={c} />)}
+          </datalist>
+        </div>
+
+        <div className="form-group">
+          <label>C. Costo (Cuartel Filtrado) *</label>
+          <input 
+            list="lista-centros" 
+            value={centroSeleccionado} 
+            onChange={e => setCentroSeleccionado(e.target.value.toUpperCase())} 
+            placeholder={campoSeleccionado ? "Escribe para buscar..." : "Selecciona un Campo primero"} 
+            autoComplete="off"
+          />
+          <datalist id="lista-centros">
+            {centrosFiltrados.map(c => <option key={c} value={c} />)}
+          </datalist>
+        </div>
+
+        <div className="form-group"><label>Corte *</label><input value={corte} onChange={e => setCorte(e.target.value.toUpperCase())} placeholder="Ej: 1" /></div>
+        
+        <div className="form-group">
+          <label>Último Código General</label>
+          <input value={ultimoCodigo} disabled style={{ background: "#e2e8f0", color: "#64748b", fontWeight: "bold", cursor: "not-allowed", fontFamily: "monospace" }} />
+        </div>
+        <div className="form-group">
+          <label>Inicia Lote en</label>
+          <input value={siguienteCodigoVista} disabled style={{ background: "#e2e8f0", color: "#0f172a", fontWeight: "bold", cursor: "not-allowed", fontFamily: "monospace" }} />
+        </div>
+        <div className="form-group">
+          <label>Cantidad a Imprimir *</label>
+          <input type="number" min="1" max="1000" value={cantidad} onChange={e => setCantidad(e.target.value)} style={{ borderColor: "#16a34a", borderWidth: "2px", fontWeight: "bold" }} />
+        </div>
+        
+        <div style={{ gridColumn: "1 / -1", textAlign: "center", marginTop: "10px", color: "#16a34a", fontWeight: "bold" }}>
+          ℹ️ Generarás {cantidad || 0} etiquetas: Desde <span style={{fontFamily:"monospace", background:"#dcfce7", padding:"2px 6px", borderRadius:"4px"}}>{siguienteCodigoVista}</span> hasta <span style={{fontFamily:"monospace", background:"#dcfce7", padding:"2px 6px", borderRadius:"4px"}}>{finVistaCompleto}</span>
+        </div>
+      </div>
+
+      <div className="form-actions" style={{ justifyContent: "center", borderBottom: "1px solid #e2e8f0", paddingBottom: "25px", marginBottom: "25px", flexDirection: "column", alignItems: "center", gap: "15px" }}>
+        
+        <button className="btn-secondary" onClick={generarPrevisualizacion} disabled={generando || procesando} style={{ fontSize: "16px", padding: "12px 30px", width: "100%", maxWidth: "400px" }}>
+          {generando ? `⏳ Generando ${progreso.actual} de ${progreso.total}...` : "👁️ Previsualizar Lote"}
+        </button>
+
+        {generando && (
+          <div style={{ width: "100%", maxWidth: "400px", background: "#e2e8f0", borderRadius: "8px", overflow: "hidden", height: "10px" }}>
+            <div style={{ width: `${(progreso.actual / progreso.total) * 100}%`, background: "#b45309", height: "100%", transition: "width 0.2s" }}></div>
+          </div>
+        )}
+        
+        {tarjas.length > 0 && !generando && (
+          <button className="btn-primary" onClick={registrarEImprimirZebra} disabled={procesando} style={{ background: "#16a34a", fontSize: "16px", padding: "12px 30px", width: "100%", maxWidth: "400px" }}>
+            {procesando ? "🖨️ Procesando impresión..." : "🖨️ Guardar Historial e Imprimir Zebra"}
+          </button>
+        )}
+      </div>
+
+      {tarjas.length > 0 && (
+        <div>
+          <h4 style={{ marginBottom: "15px", color: "#1e293b" }}>Vista Previa ({tarjas.length} etiquetas listas para guardar)</h4>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "15px", maxHeight: "400px", overflowY: "auto", background: "#f8fafc", padding: "15px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+            {tarjas.map(t => (
+              <div key={t.codigo} style={{ background: "#fff", padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e1", width: "320px", display: "flex", flexDirection: "column", color: "#000" }}>
+                <div style={{ fontSize: "11px", fontWeight: "bold", display: "flex", justifyContent: "space-between", borderBottom: "3px solid #000", paddingBottom: "3px", marginBottom: "3px" }}>
+                  <span>{empresaActiva.nombre.substring(0,25)}</span><span>{t.fechaStr}</span>
+                </div>
+                <div style={{ fontSize: "12px", fontWeight: "bold", display: "flex", justifyContent: "space-between", borderBottom: "2px solid #000", paddingBottom: "3px", marginBottom: "3px" }}>
+                  <span>C.COSTO: {t.centroCosto.substring(0,15)}</span><span>CORTE: {t.corte}</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0" }}>
+                  <img src={t.qrUrl} alt="QR" style={{ width: "100px", height: "100px", flexShrink: 0 }} />
+                  <div style={{ textAlign: "right", paddingLeft: "10px", flexGrow: 1, overflow: "hidden" }}>
+                    <div style={{ fontWeight: "900", fontSize: "18px", letterSpacing: "0px", wordBreak: "break-all", lineHeight: "1.1" }}>{t.codigo}</div>
+                  </div>
+                </div>
+                <div style={{ fontSize: "11px", fontWeight: "bold", display: "flex", justifyContent: "space-between", borderTop: "3px solid #000", paddingTop: "3px", marginTop: "3px" }}>
+                  <span>CAMPO: {t.campo.substring(0,20)}</span><span>RUT: {empresaActiva.rut}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div style={{ marginTop: "40px" }}>
+        <h4 style={{ marginBottom: "15px", color: "#1e293b" }}>Auditoría: Historial de Impresiones Guardadas ({empresaActiva.nombre.replace("AGRICOLA ", "")})</h4>
+        {historial.length === 0 ? (
+           <div className="empty-state"><p>Aún no se han impreso tarjas para esta empresa.</p></div>
+        ) : (
+          <div className="table-wrap">
+            <table className="workers-table">
+              <thead>
+                <tr>
+                  <th>Fecha Emisión</th>
+                  <th>Empresa / Campo / C.Costo</th>
+                  <th>Rango Impreso</th>
+                  <th style={{textAlign: "center"}}>Cantidad</th>
+                </tr>
+              </thead>
+              <tbody>
+                {historial.map((lote) => (
+                  <tr key={lote.id}>
+                    <td>{lote.creadoEn ? new Date(lote.creadoEn.seconds * 1000).toLocaleString() : "Recién..."}</td>
+                    <td>
+                      <div style={{fontWeight: "bold"}}>{lote.empresa}</div>
+                      <div style={{fontSize: "12px", color: "#64748b"}}>Campo: {lote.campo} | C.Costo: {lote.centroCosto}</div>
+                    </td>
+                    <td className="cell-mono" style={{fontWeight: "600"}}>
+                      bin;{lote.prefijo}{String(lote.inicio).padStart(4, '0')} - bin;{lote.prefijo}{String(lote.fin).padStart(4, '0')}
+                    </td>
+                    <td style={{textAlign: "center", fontWeight: "bold", color: "#16a34a"}}>{lote.cantidad}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+</file>
+
+<file path=".gitignore">
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# testing
+/coverage
+
+# production
+/build
+
+# misc
+.DS_Store
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+</file>
+
+<file path="package.json">
+{
+  "name": "worker-registry",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "firebase": "^10.7.0",
+    "qrcode": "^1.5.3",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-hot-toast": "^2.6.0",
+    "react-scripts": "5.0.1",
+    "uuid": "^9.0.0"
+  },
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "homepage": "."
+}
+</file>
+
+<file path="public/_redirects">
+/*    /index.html   200
+</file>
+
+<file path="README.md">
+# 👷 Sistema de Registro de Personal con QR
+
+Sistema web para registrar personal, generar códigos QR únicos e imprimir credenciales. Construido con React + Firebase.
+
+---
+
+## 🚀 Instalación local
+
+### 1. Requisitos previos
+- [Node.js](https://nodejs.org/) v16 o superior
+- Cuenta de Google (para Firebase)
+
+### 2. Clonar o descomprimir el proyecto
+
+```bash
+cd worker-registry
+npm install
+```
+
+---
+
+## 🔥 Configurar Firebase
+
+### Paso 1 — Crear proyecto Firebase
+1. Ve a [https://console.firebase.google.com](https://console.firebase.google.com)
+2. Clic en **"Agregar proyecto"** → pon un nombre (ej: `registro-personal`)
+3. Desactiva Google Analytics si no lo necesitas → **Crear proyecto**
+
+### Paso 2 — Habilitar Authentication con Google
+1. En el menú izquierdo → **Authentication** → **Comenzar**
+2. Pestaña **"Sign-in method"** → clic en **Google** → Habilitar → Guardar
+
+### Paso 3 — Crear base de datos Firestore
+1. En el menú → **Firestore Database** → **Crear base de datos**
+2. Elige **"Iniciar en modo de prueba"** (puedes cambiar las reglas después)
+3. Selecciona la región más cercana (ej: `us-central1`) → Listo
+
+### Paso 4 — Registrar la app web
+1. En la página principal del proyecto → clic en el ícono **`</>`** (Web)
+2. Ponle un nombre (ej: `registro-personal-web`) → **Registrar app**
+3. Copia el objeto `firebaseConfig` que aparece
+
+### Paso 5 — Pegar la config en el proyecto
+Abre el archivo `src/firebase.js` y reemplaza los valores:
+
+```js
+const firebaseConfig = {
+  apiKey: "AIzaSy...",
+  authDomain: "tu-proyecto.firebaseapp.com",
+  projectId: "tu-proyecto",
+  storageBucket: "tu-proyecto.appspot.com",
+  messagingSenderId: "123456789",
+  appId: "1:123456789:web:abc123"
+};
+```
+
+### Paso 6 — Configurar reglas de Firestore
+En Firebase Console → Firestore → pestaña **"Reglas"**, pega esto:
+
+```
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /workers/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
+```
+Esto requiere que el usuario esté autenticado con Google para leer/escribir.
+
+---
+
+## ▶️ Correr en desarrollo
+
+```bash
+npm start
+```
+Abre [http://localhost:3000](http://localhost:3000)
+
+---
+
+## 🌐 Despliegue gratuito en Netlify
+
+### Opción A — Desde GitHub (recomendado)
+
+1. Sube el proyecto a un repositorio en [GitHub](https://github.com)
+2. Ve a [https://app.netlify.com](https://app.netlify.com) → **Add new site** → **Import from Git**
+3. Conecta tu repo → configura:
+   - **Build command:** `npm run build`
+   - **Publish directory:** `build`
+4. Clic en **Deploy site**
+5. Netlify te dará una URL pública (ej: `https://tu-app.netlify.app`)
+
+### Opción B — Subir manualmente
+
+```bash
+npm run build
+```
+Luego arrastra la carpeta `build/` a [https://app.netlify.com/drop](https://app.netlify.com/drop)
+
+### ⚠️ Importante para Netlify: Redireccionamiento SPA
+Crea el archivo `public/_redirects` con este contenido:
+```
+/*    /index.html   200
+```
+Esto ya está incluido en el proyecto.
+
+---
+
+## 🔐 Agregar emails autorizados (opcional)
+
+Si quieres que solo ciertos usuarios puedan acceder, en Firebase Console:
+- Authentication → Users → puedes ver quién se ha logueado
+- Para mayor control, ajusta las reglas de Firestore para verificar el email:
+
+```
+allow read, write: if request.auth != null 
+  && request.auth.token.email in ['admin@tuempresa.com'];
+```
+
+---
+
+## 📋 Estructura del proyecto
+
+```
+worker-registry/
+├── public/
+│   ├── index.html
+│   └── _redirects        ← para Netlify
+├── src/
+│   ├── App.js            ← componente principal
+│   ├── App.css           ← estilos
+│   ├── firebase.js       ← configuración Firebase ⚠️ editar
+│   └── index.js          ← entry point
+├── package.json
+└── README.md
+```
+
+---
+
+## 🏗️ Estructura del QR
+
+Cada QR contiene un JSON con este formato:
+```json
+{
+  "id": "b9d0242b-84fa-4973-b1fb-5872b041e968",
+  "type": "worker"
+}
+```
+El `id` es único (UUID v4) y se verifica contra Firestore antes de asignarse.
+
+---
+
+## 📱 Uso del sistema
+
+1. **Login** con cuenta Google autorizada
+2. **Registrar** trabajadores con RUT, nombre, apellido, contratista, fecha de ingreso y estado
+3. **Subir logo** de empresa (se guarda localmente en el navegador)
+4. **Ver QR** de cada trabajador y **imprimir** la credencial
+5. **Activar/desactivar** trabajadores con un clic
+6. **Buscar** por nombre, RUT o contratista
+
+---
+
+## 🛠️ Tecnologías
+
+| Tecnología | Uso |
+|---|---|
+| React 18 | Frontend |
+| Firebase Auth | Login con Google |
+| Firestore | Base de datos en tiempo real |
+| qrcode | Generación de QR |
+| uuid | Códigos únicos |
+| Netlify | Hosting gratuito |
+</file>
+
+<file path="src/App - copia.js">
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import {
+  collection,
+  addDoc,
+  getDocs,
+  doc,
+  updateDoc,
+  query,
+  where,
+  orderBy,
+  serverTimestamp,
+} from "firebase/firestore";
+import {
+  signInWithPopup,
+  signOut,
+  onAuthStateChanged,
+} from "firebase/auth";
+import { db, auth, googleProvider } from "./firebase";
+import QRCode from "qrcode";
+import { v4 as uuidv4 } from "uuid";
+import "./App.css";
+
+// ─── Helpers ────────────────────────────────────────────
+const formatRut = (value) => {
+  const clean = value.replace(/[^0-9kK]/g, "").toUpperCase();
+  if (clean.length <= 1) return clean;
+  const body = clean.slice(0, -1);
+  const dv = clean.slice(-1);
+  const formatted = body.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return `${formatted}-${dv}`;
+};
+
+const generateWorkerCode = () => {
+  const id = uuidv4();
+  return JSON.stringify({ id, type: "worker" });
+};
+
+const parseDate = (dateStr) => {
+  if (!dateStr) return "—";
+  const [y, m, d] = dateStr.split("-");
+  return `${d}/${m}/${y}`;
+};
+
+const EMPTY_FORM = {
+  rut: "",
+  nombre: "",
+  apellido: "",
+  contratista: "",
+  fechaIngreso: "",
+  estado: "Activo",
+};
+
+// ─── Componente QR Canvas ───────────────────────────────
+function QRCard({ worker, logoUrl, onClose }) {
+  const canvasRef = useRef(null);
+  const printRef = useRef(null);
+
+  useEffect(() => {
+    if (!worker?.codigoQR) return;
+    QRCode.toCanvas(canvasRef.current, worker.codigoQR, {
+      width: 200,
+      margin: 2,
+      color: { dark: "#1a1a2e", light: "#ffffff" },
+    });
+  }, [worker]);
+
+  const handlePrint = () => {
+    const printContent = printRef.current.innerHTML;
+    const win = window.open("", "_blank", "width=600,height=700");
+    win.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Credencial – ${worker.nombre} ${worker.apellido}</title>
+          <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=Space+Mono:wght@700&display=swap" rel="stylesheet">
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { background: #f0f2f5; display: flex; justify-content: center; align-items: center; min-height: 100vh; font-family: 'DM Sans', sans-serif; }
+            .card { background: #fff; border-radius: 16px; width: 320px; overflow: hidden; box-shadow: 0 8px 32px rgba(0,0,0,0.15); }
+            .header { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%); padding: 24px 20px 20px; text-align: center; }
+            .logo-area { margin-bottom: 12px; min-height: 50px; display: flex; align-items: center; justify-content: center; }
+            .logo-area img { max-height: 50px; max-width: 140px; object-fit: contain; }
+            .company-name { color: #e0e0e0; font-size: 11px; letter-spacing: 2px; text-transform: uppercase; font-weight: 500; }
+            .body { padding: 20px; }
+            .name { font-size: 20px; font-weight: 600; color: #1a1a2e; margin-bottom: 2px; }
+            .rut { font-family: 'Space Mono', monospace; font-size: 13px; color: #666; margin-bottom: 16px; }
+            .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 18px; }
+            .meta-item { background: #f8f9ff; border-radius: 8px; padding: 10px 12px; }
+            .meta-label { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px; }
+            .meta-value { font-size: 13px; font-weight: 500; color: #1a1a2e; }
+            .qr-section { text-align: center; border-top: 1px solid #f0f0f0; padding-top: 16px; }
+            .qr-section canvas { border-radius: 8px; }
+            .badge { display: inline-block; margin-top: 10px; padding: 4px 14px; border-radius: 20px; font-size: 11px; font-weight: 600; letter-spacing: 0.5px; }
+            .badge-activo { background: #e8f5e9; color: #2e7d32; }
+            .badge-inactivo { background: #fce4ec; color: #c62828; }
+          </style>
+        </head>
+        <body>${printContent}</body>
+      </html>
+    `);
+    win.document.close();
+    win.onload = () => { win.print(); };
+  };
+
+  const estadoBadge = worker.estado === "Activo" ? "badge-activo" : "badge-inactivo";
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-box" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>Credencial QR</h2>
+          <button className="btn-icon" onClick={onClose}>✕</button>
+        </div>
+
+        <div ref={printRef}>
+          <div className="card-preview">
+            <div className="card-header-stripe">
+              <div className="card-logo-area">
+                {logoUrl
+                  ? <img src={logoUrl} alt="Logo" className="card-logo-img" />
+                  : <span className="card-logo-placeholder">TU EMPRESA</span>
+                }
+              </div>
+              <p className="card-company-label">Credencial de Personal</p>
+            </div>
+            <div className="card-body">
+              <div className="card-name">{worker.nombre} {worker.apellido}</div>
+              <div className="card-rut">{worker.rut}</div>
+              <div className="card-meta-grid">
+                <div className="card-meta-item">
+                  <div className="card-meta-label">Contratista</div>
+                  <div className="card-meta-value">{worker.contratista || "—"}</div>
+                </div>
+                <div className="card-meta-item">
+                  <div className="card-meta-label">Ingreso</div>
+                  <div className="card-meta-value">{parseDate(worker.fechaIngreso)}</div>
+                </div>
+              </div>
+              <div className="card-qr-section">
+                <canvas ref={canvasRef} />
+                <span className={`card-badge ${estadoBadge}`}>{worker.estado}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="modal-actions">
+          <button className="btn-secondary" onClick={onClose}>Cerrar</button>
+          <button className="btn-primary" onClick={handlePrint}>🖨️ Imprimir</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Formulario ─────────────────────────────────────────
+function WorkerForm({ onSave, onCancel, initial }) {
+  const [form, setForm] = useState(initial || EMPTY_FORM);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  const handleRut = (e) => {
+    const raw = e.target.value.replace(/[^0-9kK.\-]/g, "");
+    set("rut", raw);
+  };
+
+  const handleSubmit = async () => {
+    if (!form.rut || !form.nombre || !form.apellido || !form.fechaIngreso) {
+      setError("Completa los campos obligatorios: RUT, Nombre, Apellido y Fecha de Ingreso.");
+      return;
+    }
+    setError("");
+    setLoading(true);
+    try {
+      await onSave(form);
+    } catch (e) {
+      setError(e.message);
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div className="form-card">
+      <h3 className="form-title">{initial ? "Editar Trabajador" : "Registrar Trabajador"}</h3>
+      {error && <div className="alert-error">{error}</div>}
+      <div className="form-grid">
+        <div className="form-group">
+          <label>RUT *</label>
+          <input
+            value={form.rut}
+            onChange={handleRut}
+            placeholder="12.345.678-9"
+            maxLength={12}
+          />
+        </div>
+        <div className="form-group">
+          <label>Nombre *</label>
+          <input value={form.nombre} onChange={(e) => set("nombre", e.target.value)} placeholder="Nombre" />
+        </div>
+        <div className="form-group">
+          <label>Apellido *</label>
+          <input value={form.apellido} onChange={(e) => set("apellido", e.target.value)} placeholder="Apellido" />
+        </div>
+        <div className="form-group">
+          <label>Contratista</label>
+          <input value={form.contratista} onChange={(e) => set("contratista", e.target.value)} placeholder="Nombre del contratista" />
+        </div>
+        <div className="form-group">
+          <label>Fecha de Ingreso *</label>
+          <input type="date" value={form.fechaIngreso} onChange={(e) => set("fechaIngreso", e.target.value)} />
+        </div>
+        <div className="form-group">
+          <label>Estado</label>
+          <select value={form.estado} onChange={(e) => set("estado", e.target.value)}>
+            <option value="Activo">Activo</option>
+            <option value="Inactivo">Inactivo</option>
+          </select>
+        </div>
+      </div>
+      <div className="form-actions">
+        <button className="btn-secondary" onClick={onCancel} disabled={loading}>Cancelar</button>
+        <button className="btn-primary" onClick={handleSubmit} disabled={loading}>
+          {loading ? "Guardando…" : initial ? "Actualizar" : "Registrar y Generar QR"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── App Principal ───────────────────────────────────────
+export default function App() {
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [workers, setWorkers] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [view, setView] = useState("list"); // list | add | edit
+  const [editTarget, setEditTarget] = useState(null);
+  const [qrWorker, setQrWorker] = useState(null);
+  const [logoUrl, setLogoUrl] = useState(localStorage.getItem("logoUrl") || "");
+  const [search, setSearch] = useState("");
+  const [filterEstado, setFilterEstado] = useState("Todos");
+  const logoInputRef = useRef(null);
+
+  // Auth listener
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+      setAuthLoading(false);
+    });
+    return unsub;
+  }, []);
+
+  // Cargar trabajadores
+  const loadWorkers = useCallback(async () => {
+    setLoading(true);
+    try {
+      const q = query(collection(db, "workers"), orderBy("creadoEn", "desc"));
+      const snap = await getDocs(q);
+      setWorkers(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    } catch (e) {
+      console.error(e);
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    if (user) loadWorkers();
+  }, [user, loadWorkers]);
+
+  // Login Google
+  const handleLogin = async () => {
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (e) {
+      alert("Error al iniciar sesión: " + e.message);
+    }
+  };
+
+  const handleLogout = async () => {
+    await signOut(auth);
+    setWorkers([]);
+    setView("list");
+  };
+
+  // Logo
+  const handleLogoUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      localStorage.setItem("logoUrl", ev.target.result);
+      setLogoUrl(ev.target.result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Guardar trabajador
+  const handleSave = async (form) => {
+    // Verificar RUT duplicado (solo en creación)
+    if (!editTarget) {
+      const q = query(collection(db, "workers"), where("rut", "==", form.rut));
+      const snap = await getDocs(q);
+      if (!snap.empty) throw new Error("El RUT ya está registrado en el sistema.");
+    }
+
+    const codigoQR = editTarget?.codigoQR || generateWorkerCode();
+
+    if (editTarget) {
+      await updateDoc(doc(db, "workers", editTarget.id), {
+        ...form,
+        actualizadoEn: serverTimestamp(),
+      });
+    } else {
+      await addDoc(collection(db, "workers"), {
+        ...form,
+        codigoQR,
+        creadoEn: serverTimestamp(),
+        actualizadoEn: serverTimestamp(),
+      });
+    }
+
+    await loadWorkers();
+    setView("list");
+    setEditTarget(null);
+  };
+
+  const handleEdit = (worker) => {
+    setEditTarget(worker);
+    setView("edit");
+  };
+
+  const handleToggleEstado = async (worker) => {
+    const nuevoEstado = worker.estado === "Activo" ? "Inactivo" : "Activo";
+    await updateDoc(doc(db, "workers", worker.id), { estado: nuevoEstado });
+    await loadWorkers();
+  };
+
+  // Filtros
+  const filtered = workers.filter((w) => {
+    const q = search.toLowerCase();
+    const matchSearch =
+      !q ||
+      w.nombre?.toLowerCase().includes(q) ||
+      w.apellido?.toLowerCase().includes(q) ||
+      w.rut?.toLowerCase().includes(q) ||
+      w.contratista?.toLowerCase().includes(q);
+    const matchEstado = filterEstado === "Todos" || w.estado === filterEstado;
+    return matchSearch && matchEstado;
+  });
+
+  const totales = {
+    total: workers.length,
+    activos: workers.filter((w) => w.estado === "Activo").length,
+    inactivos: workers.filter((w) => w.estado === "Inactivo").length,
+  };
+
+  // ── Pantalla de carga ──
+  if (authLoading) {
+    return (
+      <div className="splash">
+        <div className="splash-spinner" />
+      </div>
+    );
+  }
+
+  // ── Login ──
+  if (!user) {
+    return (
+      <div className="login-screen">
+        <div className="login-card">
+          <div className="login-icon">👷</div>
+          <h1 className="login-title">Registro de Personal</h1>
+          <p className="login-sub">Sistema de control y credenciales QR</p>
+          <button className="btn-google" onClick={handleLogin}>
+            <svg width="18" height="18" viewBox="0 0 48 48" fill="none">
+              <path d="M47.5 24.5c0-1.6-.1-3.2-.4-4.7H24v8.9h13.2c-.6 3-2.3 5.5-4.8 7.2v6h7.7c4.5-4.2 7.4-10.3 7.4-17.4z" fill="#4285F4"/>
+              <path d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.7-6c-2.1 1.4-4.9 2.3-8.2 2.3-6.3 0-11.6-4.2-13.5-9.9H2.5v6.2C6.5 42.7 14.7 48 24 48z" fill="#34A853"/>
+              <path d="M10.5 28.6c-.5-1.4-.8-3-.8-4.6s.3-3.2.8-4.6V13.2H2.5C.9 16.3 0 19.9 0 24s.9 7.7 2.5 10.8l8-6.2z" fill="#FBBC05"/>
+              <path d="M24 9.5c3.5 0 6.7 1.2 9.2 3.6l6.9-6.9C35.8 2.4 30.4 0 24 0 14.7 0 6.5 5.3 2.5 13.2l8 6.2c1.9-5.7 7.2-9.9 13.5-9.9z" fill="#EA4335"/>
+            </svg>
+            Ingresar con Google
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Formulario ──
+  if (view === "add" || view === "edit") {
+    return (
+      <div className="app-layout">
+        <TopBar user={user} onLogout={handleLogout} />
+        <main className="main-content">
+          <WorkerForm
+            onSave={handleSave}
+            onCancel={() => { setView("list"); setEditTarget(null); }}
+            initial={editTarget}
+          />
+        </main>
+      </div>
+    );
+  }
+
+  // ── Lista principal ──
+  return (
+    <div className="app-layout">
+      <TopBar user={user} onLogout={handleLogout} />
+
+      <main className="main-content">
+        {/* Stats */}
+        <div className="stats-row">
+          <div className="stat-card">
+            <div className="stat-label">Total</div>
+            <div className="stat-num">{totales.total}</div>
+          </div>
+          <div className="stat-card stat-activo">
+            <div className="stat-label">Activos</div>
+            <div className="stat-num">{totales.activos}</div>
+          </div>
+          <div className="stat-card stat-inactivo">
+            <div className="stat-label">Inactivos</div>
+            <div className="stat-num">{totales.inactivos}</div>
+          </div>
+          <div className="stat-card stat-logo" onClick={() => logoInputRef.current.click()} title="Cambiar logo">
+            {logoUrl
+              ? <img src={logoUrl} alt="Logo empresa" className="stat-logo-img" />
+              : <span className="stat-logo-placeholder">📷 Logo empresa</span>
+            }
+            <input ref={logoInputRef} type="file" accept="image/*" onChange={handleLogoUpload} style={{ display: "none" }} />
+          </div>
+        </div>
+
+        {/* Toolbar */}
+        <div className="toolbar">
+          <div className="search-wrap">
+            <input
+              className="search-input"
+              placeholder="Buscar por nombre, RUT o contratista…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <select className="filter-select" value={filterEstado} onChange={(e) => setFilterEstado(e.target.value)}>
+            <option value="Todos">Todos</option>
+            <option value="Activo">Activos</option>
+            <option value="Inactivo">Inactivos</option>
+          </select>
+          <button className="btn-primary" onClick={() => setView("add")}>+ Nuevo trabajador</button>
+        </div>
+
+        {/* Tabla */}
+        {loading ? (
+          <div className="loading-wrap"><div className="splash-spinner" /></div>
+        ) : filtered.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-icon">🔍</div>
+            <p>{workers.length === 0 ? "No hay trabajadores registrados aún." : "No se encontraron resultados."}</p>
+          </div>
+        ) : (
+          <div className="table-wrap">
+            <table className="workers-table">
+              <thead>
+                <tr>
+                  <th>RUT</th>
+                  <th>Nombre</th>
+                  <th>Contratista</th>
+                  <th>Ingreso</th>
+                  <th>Estado</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((w) => (
+                  <tr key={w.id}>
+                    <td className="cell-mono">{w.rut}</td>
+                    <td className="cell-name">{w.nombre} {w.apellido}</td>
+                    <td>{w.contratista || "—"}</td>
+                    <td>{parseDate(w.fechaIngreso)}</td>
+                    <td>
+                      <span className={`badge ${w.estado === "Activo" ? "badge-activo" : "badge-inactivo"}`}>
+                        {w.estado}
+                      </span>
+                    </td>
+                    <td className="cell-actions">
+                      <button className="btn-action" title="Ver QR" onClick={() => setQrWorker(w)}>QR</button>
+                      <button className="btn-action" title="Editar" onClick={() => handleEdit(w)}>✏️</button>
+                      <button
+                        className={`btn-action ${w.estado === "Activo" ? "btn-action-warn" : "btn-action-ok"}`}
+                        title={w.estado === "Activo" ? "Desactivar" : "Activar"}
+                        onClick={() => handleToggleEstado(w)}
+                      >
+                        {w.estado === "Activo" ? "🔴" : "🟢"}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </main>
+
+      {qrWorker && (
+        <QRCard worker={qrWorker} logoUrl={logoUrl} onClose={() => setQrWorker(null)} />
+      )}
+    </div>
+  );
+}
+
+function TopBar({ user, onLogout }) {
+  return (
+    <header className="topbar">
+      <div className="topbar-brand">
+        <span className="topbar-icon">👷</span>
+        <span className="topbar-title">Registro de Personal</span>
+      </div>
+      <div className="topbar-user">
+        <img src={user.photoURL} alt={user.displayName} className="user-avatar" />
+        <span className="user-name">{user.displayName}</span>
+        <button className="btn-logout" onClick={onLogout}>Salir</button>
+      </div>
+    </header>
+  );
+}
+</file>
+
+<file path="src/firebase.js">
+// src/firebase.js
+// =====================================================
+//  CONFIGURACIÓN FIREBASE
+//  Reemplaza estos valores con los de tu proyecto Firebase
+//  Ve a: https://console.firebase.google.com
+//  → Nuevo proyecto → Agrega app web → Copia la config
+// =====================================================
+
+// import { initializeApp } from "firebase/app";
+// import { getFirestore } from "firebase/firestore";
+// import { getAuth, GoogleAuthProvider } from "firebase/auth";
+// import { getStorage } from "firebase/storage";
+
+// const firebaseConfig = {
+//  apiKey: "AIzaSyD0u_0c0yKTnLarvpdar0ruIZ_-X_khWUs",
+//  authDomain: "credencialesagrak.firebaseapp.com",
+//  projectId: "credencialesagrak",
+//  storageBucket: "credencialesagrak.firebasestorage.app",
+//  messagingSenderId: "1015802774112",
+//  appId: "1:1015802774112:web:80cc18c423cea86b26f905"
+// };
+
+// const app = initializeApp(firebaseConfig);
+
+// export const db = getFirestore(app);
+// export const auth = getAuth(app);
+// export const storage = getStorage(app);
+// export const googleProvider = new GoogleAuthProvider();
+
+// export default app;
+
+import { initializeApp } from "firebase/app";
+import { getAuth, GoogleAuthProvider } from "firebase/auth";
+// 🚨 NUEVO: Importamos las herramientas de caché offline
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
+
+// Tu configuración actual de Firebase (no la borres, deja las tuyas)
+const firebaseConfig = {
+  apiKey: "AIzaSyD0u_0c0yKTnLarvpdar0ruIZ_-X_khWUs",
+  authDomain: "credencialesagrak.firebaseapp.com",
+  projectId: "credencialesagrak",
+  storageBucket: "credencialesagrak.firebasestorage.app",
+  messagingSenderId: "1015802774112",
+  appId: "1:1015802774112:web:80cc18c423cea86b26f905"
+ };
+
+// Inicializamos la app
+const app = initializeApp(firebaseConfig);
+
+// Inicializamos Auth
+const auth = getAuth(app);
+const googleProvider = new GoogleAuthProvider();
+
+// 🚨 NUEVO: Inicializamos Firestore con la Memoria Caché Activada
+const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+});
+
+export { auth, googleProvider, db };
+</file>
+
+<file path="src/index.js">
+import React from "react";
+import ReactDOM from "react-dom/client";
+import "./App.css";
+import App from "./App";
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+</file>
+
+<file path="public/index.html">
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Control de Campo y Cosecha</title>
+    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+    <meta name="theme-color" content="#101c38" />
+    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo.png" />
+    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  </head>
+  <body>
+    <noscript>Necesitas JavaScript habilitado para ejecutar esta aplicación.</noscript>
+    <div id="root"></div>
+  </body>
+</html>
+</file>
+
+<file path="src/App.css">
+/* ─── Reset & Base ──────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --navy: #1a1a2e;
+  --navy-mid: #16213e;
+  --blue: #0f3460;
+  --accent: #e94560;
+  --accent-soft: #fde8ec;
+  --green: #2e7d32;
+  --green-soft: #e8f5e9;
+  --red: #c62828;
+  --red-soft: #fce4ec;
+  --gray-50: #f8f9fb;
+  --gray-100: #f0f2f5;
+  --gray-200: #e2e6ec;
+  --gray-400: #9aa0ab;
+  --gray-600: #5a6170;
+  --gray-800: #2c3140;
+  --white: #ffffff;
+  --font: 'DM Sans', system-ui, sans-serif;
+  --mono: 'Space Mono', monospace;
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 16px;
+  --shadow: 0 2px 12px rgba(26,26,46,0.08);
+  --shadow-md: 0 6px 24px rgba(26,26,46,0.12);
+}
+
+body {
+  font-family: var(--font);
+  background: var(--gray-100);
+  color: var(--gray-800);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ─── Layout ─────────────────────────────────────────── */
+.app-layout {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.main-content {
+  max-width: 1100px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+  flex: 1;
+}
+
+/* ─── TopBar ─────────────────────────────────────────── */
+.topbar {
+  background: var(--navy);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2rem;
+  height: 60px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  border-bottom: 2px solid var(--accent);
+}
+
+.topbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.topbar-icon {
+  font-size: 22px;
+}
+
+.topbar-title {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  color: white;
+}
+
+.topbar-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.user-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.3);
+}
+
+.user-name {
+  font-size: 13px;
+  color: rgba(255,255,255,0.8);
+}
+
+.btn-logout {
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.2);
+  color: white;
+  font-family: var(--font);
+  font-size: 12px;
+  padding: 5px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-logout:hover {
+  background: rgba(255,255,255,0.2);
+}
+
+/* ─── Stats ──────────────────────────────────────────── */
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 14px;
+  margin-bottom: 1.5rem;
+}
+
+.stat-card {
+  background: var(--white);
+  border-radius: var(--radius);
+  padding: 1rem 1.25rem;
+  box-shadow: var(--shadow);
+  border: 1px solid var(--gray-200);
+}
+
+.stat-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--gray-400);
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+
+.stat-num {
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--navy);
+  font-family: var(--mono);
+}
+
+.stat-activo .stat-num { color: var(--green); }
+.stat-inactivo .stat-num { color: var(--red); }
+
+.stat-logo {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 70px;
+  border: 2px dashed var(--gray-200);
+  transition: border-color 0.15s;
+}
+
+.stat-logo:hover {
+  border-color: var(--accent);
+}
+
+.stat-logo-img {
+  max-height: 44px;
+  max-width: 100%;
+  object-fit: contain;
+}
+
+.stat-logo-placeholder {
+  font-size: 12px;
+  color: var(--gray-400);
+  text-align: center;
+}
+
+/* ─── Toolbar ────────────────────────────────────────── */
+.toolbar {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.search-wrap {
+  flex: 1;
+  min-width: 200px;
+}
+
+.search-input {
+  width: 100%;
+  padding: 9px 14px;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius);
+  font-family: var(--font);
+  font-size: 14px;
+  background: var(--white);
+  color: var(--gray-800);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.search-input:focus {
+  border-color: var(--navy-mid);
+  box-shadow: 0 0 0 3px rgba(26,26,46,0.07);
+}
+
+.filter-select {
+  padding: 9px 14px;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius);
+  font-family: var(--font);
+  font-size: 14px;
+  background: var(--white);
+  color: var(--gray-800);
+  outline: none;
+  cursor: pointer;
+}
+
+/* ─── Buttons ────────────────────────────────────────── */
+.btn-primary {
+  background: var(--navy);
+  color: white;
+  border: none;
+  border-radius: var(--radius);
+  padding: 9px 20px;
+  font-family: var(--font);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+}
+
+.btn-primary:hover { background: var(--blue); }
+.btn-primary:active { transform: scale(0.98); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-secondary {
+  background: var(--white);
+  color: var(--gray-800);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius);
+  padding: 9px 20px;
+  font-family: var(--font);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-secondary:hover { background: var(--gray-50); }
+.btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-icon {
+  background: none;
+  border: none;
+  color: var(--gray-600);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  line-height: 1;
+}
+
+.btn-icon:hover { background: var(--gray-100); }
+
+/* ─── Table ──────────────────────────────────────────── */
+.table-wrap {
+  background: var(--white);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  border: 1px solid var(--gray-200);
+}
+
+.workers-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.workers-table thead {
+  background: var(--navy);
+  color: white;
+}
+
+.workers-table th {
+  padding: 12px 16px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+}
+
+.workers-table td {
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--gray-100);
+  color: var(--gray-800);
+}
+
+.workers-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.workers-table tbody tr:hover td {
+  background: var(--gray-50);
+}
+
+.cell-mono {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.cell-name {
+  font-weight: 500;
+}
+
+.cell-actions {
+  display: flex;
+  gap: 6px;
+}
+
+/* ─── Badges ─────────────────────────────────────────── */
+.badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+.badge-activo { background: var(--green-soft); color: var(--green); }
+.badge-inactivo { background: var(--red-soft); color: var(--red); }
+
+/* ─── Action Buttons ─────────────────────────────────── */
+.btn-action {
+  background: var(--gray-100);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-sm);
+  padding: 5px 10px;
+  font-size: 12px;
+  font-family: var(--font);
+  cursor: pointer;
+  font-weight: 500;
+  transition: background 0.12s;
+}
+
+.btn-action:hover { background: var(--gray-200); }
+.btn-action-warn:hover { background: var(--red-soft); border-color: var(--red); }
+.btn-action-ok:hover { background: var(--green-soft); border-color: var(--green); }
+
+/* ─── Empty & Loading ────────────────────────────────── */
+.empty-state {
+  text-align: center;
+  padding: 4rem 2rem;
+  color: var(--gray-400);
+}
+
+.empty-icon { font-size: 40px; margin-bottom: 12px; }
+
+.loading-wrap {
+  display: flex;
+  justify-content: center;
+  padding: 4rem;
+}
+
+/* ─── Form Card ──────────────────────────────────────── */
+.form-card {
+  background: var(--white);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: 2rem;
+  max-width: 680px;
+  margin: 0 auto;
+  border: 1px solid var(--gray-200);
+}
+
+.form-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--navy);
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--gray-100);
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-group label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--gray-600);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.form-group input,
+.form-group select {
+  padding: 9px 12px;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius);
+  font-family: var(--font);
+  font-size: 14px;
+  color: var(--gray-800);
+  background: var(--white);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+  border-color: var(--navy-mid);
+  box-shadow: 0 0 0 3px rgba(26,26,46,0.07);
+}
+
+.form-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.alert-error {
+  background: var(--red-soft);
+  color: var(--red);
+  border: 1px solid #f5b8c0;
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  font-size: 13px;
+  margin-bottom: 1rem;
+}
+
+/* ─── Modal ──────────────────────────────────────────── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(26,26,46,0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  padding: 1rem;
+}
+
+.modal-box {
+  background: var(--white);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 380px;
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--gray-100);
+}
+
+.modal-header h2 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--navy);
+}
+
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  padding: 1rem 1.25rem;
+  border-top: 1px solid var(--gray-100);
+  justify-content: flex-end;
+}
+
+/* ─── Card Preview (QR Card) ─────────────────────────── */
+.card-preview {
+  border-radius: 12px;
+  overflow: hidden;
+  margin: 1rem 1.25rem;
+  border: 1px solid var(--gray-200);
+}
+
+.card-header-stripe {
+  background: linear-gradient(135deg, var(--navy) 0%, var(--blue) 100%);
+  padding: 1.2rem 1.25rem 1rem;
+  text-align: center;
+}
+
+.card-logo-area {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+
+.card-logo-img {
+  max-height: 44px;
+  max-width: 160px;
+  object-fit: contain;
+}
+
+.card-logo-placeholder {
+  font-size: 12px;
+  color: rgba(255,255,255,0.6);
+  font-weight: 500;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.card-company-label {
+  font-size: 10px;
+  color: rgba(255,255,255,0.5);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+
+.card-body {
+  padding: 1rem 1.25rem;
+  background: var(--white);
+}
+
+.card-name {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--navy);
+  margin-bottom: 2px;
+}
+
+.card-rut {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--gray-400);
+  margin-bottom: 12px;
+}
+
+.card-meta-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.card-meta-item {
+  background: var(--gray-50);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.card-meta-label {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--gray-400);
+  margin-bottom: 2px;
+}
+
+.card-meta-value {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--navy);
+}
+
+.card-qr-section {
+  text-align: center;
+  border-top: 1px solid var(--gray-100);
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.card-qr-section canvas {
+  border-radius: 8px;
+}
+
+.card-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 12px;
+  border-radius: 20px;
+  letter-spacing: 0.3px;
+}
+
+/* ─── Login Screen ───────────────────────────────────── */
+.login-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--navy);
+  padding: 1rem;
+}
+
+.login-card {
+  background: var(--white);
+  border-radius: var(--radius-lg);
+  padding: 2.5rem 2rem;
+  width: 100%;
+  max-width: 380px;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+}
+
+.login-icon {
+  font-size: 48px;
+  margin-bottom: 1rem;
+}
+
+.login-title {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--navy);
+  margin-bottom: 6px;
+}
+
+.login-sub {
+  font-size: 14px;
+  color: var(--gray-400);
+  margin-bottom: 2rem;
+}
+
+.btn-google {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px;
+  background: var(--white);
+  border: 1.5px solid var(--gray-200);
+  border-radius: var(--radius);
+  font-family: var(--font);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--gray-800);
+  cursor: pointer;
+  transition: background 0.15s, box-shadow 0.15s;
+}
+
+.btn-google:hover {
+  background: var(--gray-50);
+  box-shadow: var(--shadow);
+}
+
+/* ─── Splash ─────────────────────────────────────────── */
+.splash {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--gray-100);
+}
+
+.splash-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid var(--gray-200);
+  border-top-color: var(--navy);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ─── Responsive ─────────────────────────────────────── */
+@media (max-width: 600px) {
+  .form-grid { grid-template-columns: 1fr; }
+  .toolbar { flex-direction: column; }
+  .workers-table th:nth-child(3),
+  .workers-table td:nth-child(3) { display: none; }
+  .user-name { display: none; }
+  .main-content { padding: 1rem; }
+}
+
+/* ==========================================================================
+   DISEÑO RESPONSIVE (MÓVILES Y TABLETS)
+   ========================================================================== */
+
+@media screen and (max-width: 768px) {
+  /* 1. Ajuste del menú superior (TopBar) */
+  .topbar {
+    flex-direction: column;
+    gap: 12px;
+    padding: 15px;
+    text-align: center;
+  }
+  .topbar-user {
+    width: 100%;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  /* 2. Pestañas de Navegación (Tabs) apiladas */
+  .view-tabs {
+    flex-direction: column;
+    gap: 8px !important;
+  }
+  .view-tabs button {
+    width: 100%;
+    text-align: center;
+    padding: 12px !important;
+  }
+
+  /* 3. Tarjetas de Estadísticas apiladas */
+  .stats-row {
+    flex-direction: column;
+    gap: 10px;
+  }
+  .stat-card {
+    width: 100%;
+  }
+
+  /* 4. Barra de Herramientas (Buscador y Botón Nuevo) */
+  .toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .search-input, 
+  .filter-select, 
+  .btn-primary, 
+  .btn-secondary {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  /* 5. Formularios a 1 sola columna */
+  .form-grid {
+    grid-template-columns: 1fr !important;
+    gap: 15px;
+  }
+  .form-actions {
+    flex-direction: column-reverse; /* El botón principal queda arriba en móviles */
+    gap: 10px;
+  }
+
+  /* 6. Tablas con Scroll Horizontal (Evita que se rompan) */
+  .table-wrap {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch; /* Scroll suave en iPhone */
+    border-radius: 8px;
+    box-shadow: inset 0 0 5px rgba(0,0,0,0.05);
+  }
+  .workers-table {
+    min-width: 700px; /* Obliga a la tabla a mantener su ancho y activa el scroll */
+  }
+
+  /* 7. Modal del Código QR */
+  .modal-box {
+    width: 95%;
+    padding: 15px;
+  }
+  .card-preview {
+    transform: scale(0.9); /* Achica un poco la credencial para que quepa en pantallas chicas */
+    transform-origin: top center;
+    margin-bottom: -20px;
+  }
+
+  /* 8. Contenedor principal de la app */
+  .main-content {
+    padding: 10px !important;
+  }
+}
+
+/* --- ESTILOS PARA EL LOGO CORPORATIVO --- */
+.login-logo {
+  max-height: 80px; /* Ajusta este valor si tu logo es muy grande o pequeño */
+  margin-bottom: 20px;
+  object-fit: contain;
+}
+
+.topbar-logo {
+  max-height: 30px;
+  margin-right: 12px;
+  object-fit: contain;
+}
+
+/* Ajuste extra para teléfonos muy pequeños (iPhone SE, etc) */
+@media screen and (max-width: 480px) {
+  .login-card {
+    width: 90%;
+    padding: 20px;
+  }
+  .login-title {
+    font-size: 24px;
+  }
+}
+</file>
+
+<file path="src/App.js">
+import React, { useState, useEffect, useRef } from "react";
+import {
+  collection, addDoc, getDocs, doc, updateDoc, setDoc, getDoc, query, where, orderBy, serverTimestamp, writeBatch, deleteDoc, onSnapshot
+} from "firebase/firestore";
+import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
+import { db, auth, googleProvider } from "./firebase";
+import QRCode from "qrcode";
+import { v4 as uuidv4 } from "uuid";
+import toast, { Toaster } from "react-hot-toast";
+import "./App.css";
+
+// ─── IMPORTACIÓN DE COMPONENTES EXTERNOS ────────────────
+import CamposManager from "./components/CamposManager";
+import TarjasManager from "./components/TarjasManager";
+
+const EMPRESAS_MAESTRAS = [
+  { id: 0, nombre: "AGRICOLA CONVENTO VIEJO SPA", rut: "79.737.880-1", prefijo: "AAON" },
+  { id: 1, nombre: "TORRETAGLE", rut: "76.064.746-2", prefijo: "AAON" }
+];
+
+// ─── Helpers ────────────────────────────────────────────
+const formatRut = (value) => {
+  if (!value) return "";
+  const clean = value.replace(/[^0-9kK]/g, "").toUpperCase();
+  if (clean.length <= 1) return clean;
+  const body = clean.slice(0, -1);
+  const dv = clean.slice(-1);
+  const formatted = body.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return `${formatted}-${dv}`;
+};
+
+const validateRut = (rut) => {
+  if (!rut) return false;
+  const cleanRut = rut.replace(/[^0-9kK]/g, "").toUpperCase();
+  if (cleanRut.length < 2) return false;
+  const body = cleanRut.slice(0, -1);
+  const dv = cleanRut.slice(-1);
+  let sum = 0; let multiplier = 2;
+  for (let i = body.length - 1; i >= 0; i--) {
+    sum += parseInt(body.charAt(i)) * multiplier;
+    multiplier = multiplier < 7 ? multiplier + 1 : 2;
+  }
+  const expectedDv = 11 - (sum % 11);
+  let calculatedDv = expectedDv === 11 ? "0" : expectedDv === 10 ? "K" : expectedDv.toString();
+  return dv === calculatedDv;
+};
+
+const generateWorkerCode = () => JSON.stringify({ id: uuidv4(), type: "worker" });
+const parseDate = (dateStr) => {
+  if (!dateStr || !dateStr.includes("-")) return "—";
+  const [y, m, d] = dateStr.split("-"); return `${d}/${m}/${y}`;
+};
+
+const EMPTY_WORKER_FORM = { rut: "", nombre: "", apellido: "", contratista: "", fechaIngreso: "", estado: "Activo" };
+const EMPTY_CONTRACTOR_FORM = { rut: "", nombre: "", contacto: "", estado: "Activo" };
+
+// ─── Componente QR Canvas (Para Personal) ───────────────
+function QRCard({ worker, logoUrl, onClose }) {
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    if (!worker?.codigoQR) return;
+    QRCode.toCanvas(canvasRef.current, worker.codigoQR, {
+      width: 200, margin: 2, color: { dark: "#1a1a2e", light: "#ffffff" },
+    });
+  }, [worker]);
+
+  const handlePrint = () => {
+    if (!canvasRef.current) return;
+    const qrImageUrl = canvasRef.current.toDataURL("image/png");
+    
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Credencial – ${worker.nombre} ${worker.apellido}</title>
+          <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=Space+Mono:wght@700&display=swap" rel="stylesheet">
+          <style>
+            @media print {
+              * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
+              body { margin: 0; }
+              @page { margin: 0.5cm; }
+            }
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { background: #fff; display: flex; justify-content: center; align-items: flex-start; padding: 20px; min-height: 100vh; font-family: 'DM Sans', sans-serif; }
+            .card { background: #fff; border-radius: 12px; width: 340px; overflow: hidden; border: 1px solid #e2e8f0; }
+            .header { background: #101c38; padding: 30px 20px 20px; text-align: center; } 
+            .logo-area { margin-bottom: 15px; min-height: 50px; display: flex; align-items: center; justify-content: center; }
+            .logo-area img { max-height: 50px; max-width: 140px; object-fit: contain; }
+            .company-name { color: #8ba2c4; font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; font-weight: 600; }
+            .body { padding: 24px; text-align: center; }
+            .name { font-size: 22px; font-weight: 600; color: #1a1a2e; margin-bottom: 4px; text-align: left;}
+            .rut { font-family: 'Space Mono', monospace; font-size: 14px; color: #888; margin-bottom: 20px; text-align: left; }
+            .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 24px; text-align: left; }
+            .meta-item { background: #f8fafc; border-radius: 8px; padding: 12px; }
+            .meta-label { font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; font-weight: 600;}
+            .meta-value { font-size: 14px; font-weight: 500; color: #0f172a; }
+            .qr-section { text-align: center; display: flex; flex-direction: column; align-items: center; }
+            .qr-section img { border-radius: 8px; margin-bottom: 6px; width: 200px; height: 200px; }
+            .folio-text { font-family: 'Space Mono', monospace; font-size: 12px; color: #64748b; margin-bottom: 12px; font-weight: 700; letter-spacing: 1px; }
+            .badge { display: inline-block; padding: 6px 20px; border-radius: 20px; font-size: 13px; font-weight: 600; }
+            .badge-activo { background: #eefdf4; color: #22c55e; border: 1px solid #bbf7d0;}
+            .badge-inactivo { background: #fef2f2; color: #ef4444; border: 1px solid #fecaca;}
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <div class="header">
+              <div class="logo-area">
+                ${logoUrl ? `<img src="${logoUrl}" alt="Logo" />` : `<span style="color:white">LOGO EMPRESA</span>`}
+              </div>
+              <div class="company-name">Credencial de personal</div>
+            </div>
+            <div class="body">
+              <div class="name">${worker.nombre} ${worker.apellido}</div>
+              <div class="rut">${formatRut(worker.rut)}</div>
+              <div class="meta">
+                <div class="meta-item"><div class="meta-label">Contratista</div><div class="meta-value">${worker.contratista || "—"}</div></div>
+                <div class="meta-item"><div class="meta-label">Ingreso</div><div class="meta-value">${parseDate(worker.fechaIngreso)}</div></div>
+              </div>
+              <div class="qr-section">
+                <img src="${qrImageUrl}" alt="Código QR" />
+                <div class="folio-text">FOLIO: ${worker.folioQR || "S/F"}</div>
+                <div class="badge ${worker.estado === "Activo" ? "badge-activo" : "badge-inactivo"}">${worker.estado}</div>
+              </div>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    const printFrame = document.createElement("iframe");
+    printFrame.style.position = "absolute";
+    printFrame.style.width = "0px";
+    printFrame.style.height = "0px";
+    printFrame.style.border = "none";
+    document.body.appendChild(printFrame);
+    
+    const docFrame = printFrame.contentWindow.document;
+    docFrame.open();
+    docFrame.write(htmlContent);
+    docFrame.close();
+
+    setTimeout(() => {
+      printFrame.contentWindow.focus();
+      printFrame.contentWindow.print();
+      setTimeout(() => document.body.removeChild(printFrame), 1000);
+    }, 500);
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-box" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header"><h2>Credencial QR</h2><button className="btn-icon" onClick={onClose}>✕</button></div>
+        <div className="card-preview" style={{border: '1px solid #e2e8f0'}}>
+          <div className="card-header-stripe" style={{background: '#101c38'}}>
+            <div className="card-logo-area">
+              {logoUrl ? <img src={logoUrl} alt="Logo" className="card-logo-img" /> : <span className="card-logo-placeholder" style={{color: 'white'}}>LOGO EMPRESA</span>}
+            </div>
+            <p className="card-company-label" style={{color: '#8ba2c4'}}>Credencial de Personal</p>
+          </div>
+          <div className="card-body">
+            <div className="card-name" style={{textAlign:'left'}}>{worker.nombre} {worker.apellido}</div>
+            <div className="card-rut" style={{textAlign:'left', color: '#888', marginBottom:'16px'}}>{formatRut(worker.rut)}</div>
+            <div className="card-meta-grid">
+              <div className="card-meta-item"><div className="card-meta-label">Contratista</div><div className="card-meta-value">{worker.contratista || "—"}</div></div>
+              <div className="card-meta-item"><div className="card-meta-label">Ingreso</div><div className="card-meta-value">{parseDate(worker.fechaIngreso)}</div></div>
+            </div>
+            <div className="card-qr-section">
+              <canvas ref={canvasRef} style={{marginBottom: "4px"}} />
+              <div style={{fontFamily: "'Space Mono', monospace", fontSize: "11px", color: "#64748b", fontWeight: "700", marginBottom: "12px", letterSpacing: "1px"}}>
+                FOLIO: {worker.folioQR || "S/F"}
+              </div>
+              <span className={`card-badge badge ${worker.estado === "Activo" ? "badge-activo" : "badge-inactivo"}`}>{worker.estado}</span>
+            </div>
+          </div>
+        </div>
+        <div className="modal-actions">
+          <button className="btn-secondary" onClick={onClose}>Cerrar</button>
+          <button className="btn-primary" onClick={handlePrint}>🖨️ Imprimir</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Administrador de Credenciales ──
+function CredentialsManager({ credentialsList, onBulkUpload, onDelete, loading }) {
+  const [bulkText, setBulkText] = useState("");
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => setBulkText(ev.target.result);
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
+  const handleUpload = () => {
+    if (!bulkText.trim()) return;
+    const lines = bulkText.split("\n").map(l => l.trim()).filter(l => l !== "");
+    const newCredentials = [];
+
+    for (let line of lines) {
+      const separatorIndex = line.search(/[,\t]/);
+      if (separatorIndex !== -1) {
+        let folio = line.substring(0, separatorIndex).trim();
+        let codigo = line.substring(separatorIndex + 1).trim();
+
+        folio = folio.replace(/^"|"$/g, '');
+        codigo = codigo.replace(/^"|"$/g, '');
+        folio = folio.replace(/""/g, '"');
+        codigo = codigo.replace(/""/g, '"');
+
+        if (folio && codigo) {
+          newCredentials.push({ folio, codigo });
+        }
+      }
+    }
+
+    if (newCredentials.length === 0) {
+      toast.error("El formato es incorrecto. Usa 'Folio, Código' por línea.");
+      return;
+    }
+
+    onBulkUpload(newCredentials);
+    setBulkText("");
+  };
+
+  const disponibles = credentialsList
+    .filter(c => c.estado === "Disponible")
+    .sort((a, b) => String(a.folio).localeCompare(String(b.folio), undefined, { numeric: true, sensitivity: 'base' }));
+    
+  const asignadas = credentialsList.filter(c => c.estado === "Asignado");
+
+  return (
+    <div className="form-card" style={{ maxWidth: "800px", margin: "0 auto" }}>
+      <h3 className="form-title">Carga Masiva de Credenciales (Folio y Código)</h3>
+      <p style={{ color: "#64748b", fontSize: "14px", marginBottom: "15px" }}>
+        Puedes cargar un archivo (.csv o .txt) o pegar tu lista separada por comas. Estas tarjetas quedarán "Disponibles" para asignar automáticamente a los nuevos trabajadores.
+      </p>
+      
+      <div style={{ marginBottom: "15px" }}>
+        <label className="btn-secondary" style={{ cursor: "pointer", display: "inline-block" }}>
+          📁 Seleccionar Archivo
+          <input type="file" accept=".csv, .txt" onChange={handleFileUpload} style={{ display: "none" }} />
+        </label>
+      </div>
+
+      <textarea
+        rows={8}
+        value={bulkText}
+        onChange={(e) => setBulkText(e.target.value)}
+        placeholder="Ejemplo:&#10;1001, {&#34;id&#34;:&#34;123&#34;,&#34;type&#34;:&#34;worker&#34;}&#10;1002, 987654321"
+        style={{ width: "100%", padding: "12px", borderRadius: "8px", border: "1px solid #cbd5e1", marginBottom: "15px", fontFamily: "monospace" }}
+      />
+      <button className="btn-primary" onClick={handleUpload} disabled={loading || !bulkText.trim()}>
+        {loading ? "Cargando..." : "📤 Subir Credenciales a la Nube"}
+      </button>
+
+      <div style={{ marginTop: "40px", borderTop: "1px solid #e2e8f0", paddingTop: "20px" }}>
+        <h4 style={{ marginBottom: "15px", color: "#1e293b" }}>Resumen de Credenciales en Sistema</h4>
+        <div style={{ display: "flex", gap: "20px", marginBottom: "20px" }}>
+          <div style={{ background: "#eefdf4", color: "#166534", padding: "10px 20px", borderRadius: "8px", fontWeight: "600" }}>
+            Disponibles: {disponibles.length}
+          </div>
+          <div style={{ background: "#f1f5f9", color: "#475569", padding: "10px 20px", borderRadius: "8px", fontWeight: "600" }}>
+            Asignadas a personal: {asignadas.length}
+          </div>
+        </div>
+
+        {disponibles.length > 0 && (
+          <div style={{ maxHeight: "300px", overflowY: "auto", border: "1px solid #e2e8f0", borderRadius: "8px" }}>
+            <table className="workers-table" style={{ margin: 0 }}>
+              <thead>
+                <tr>
+                  <th>Folio</th>
+                  <th>Código QR Interno</th>
+                  <th>Estado</th>
+                  <th style={{ width: "80px", textAlign: "center" }}>Acción</th>
+                </tr>
+              </thead>
+              <tbody>
+                {disponibles.map(c => (
+                  <tr key={c.id}>
+                    <td style={{fontWeight: 'bold', color: '#0f172a'}}>{c.folio}</td>
+                    <td className="cell-mono">{c.codigo}</td>
+                    <td><span className="badge badge-activo">Disponible</span></td>
+                    <td style={{ textAlign: "center" }}>
+                      <button className="btn-action btn-action-warn" onClick={() => onDelete(c.id)} title="Eliminar código">🗑️</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── FORMULARIOS ───
+function WorkerForm({ onSave, onCancel, initial, contractorsList, credentialsList }) {
+  const [form, setForm] = useState(initial || EMPTY_WORKER_FORM);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const handleRutChange = (e) => set("rut", formatRut(e.target.value));
+
+  const availableCount = credentialsList?.filter(c => c.estado === "Disponible").length || 0;
+
+  const handleSubmit = async () => {
+    if (!form.rut || !form.nombre || !form.apellido || !form.fechaIngreso) {
+      toast.error("Completa RUT, Nombre, Apellido y Fecha de Ingreso.");
+      return;
+    }
+    if (!validateRut(form.rut)) {
+      toast.error("El RUT ingresado no es válido.");
+      return;
+    }
+
+    setError(""); setLoading(true);
+    try { await onSave(form); } catch (e) { toast.error(e.message); }
+    setLoading(false);
+  };
+
+  return (
+    <div className="form-card">
+      <h3 className="form-title">{initial ? "Editar Trabajador" : "Registrar Trabajador"}</h3>
+      {error && <div className="alert-error">{error}</div>}
+      <div className="form-grid">
+        <div className="form-group"><label>RUT *</label><input value={form.rut} onChange={handleRutChange} placeholder="12.345.678-9" maxLength={12} /></div>
+        <div className="form-group"><label>Nombre *</label><input value={form.nombre} onChange={(e) => set("nombre", e.target.value)} placeholder="Nombre" /></div>
+        <div className="form-group"><label>Apellido *</label><input value={form.apellido} onChange={(e) => set("apellido", e.target.value)} placeholder="Apellido" /></div>
+        
+        <div className="form-group">
+          <label>Contratista (Empresa o Contacto)</label>
+          <input list="lista-contratistas" value={form.contratista} onChange={(e) => set("contratista", e.target.value)} placeholder="Escribe el nombre o contacto..." autoComplete="off" />
+          <datalist id="lista-contratistas">
+            {contractorsList.filter(c => c.estado === "Activo").map((c) => (
+              <option key={c.id} value={`${c.nombre}${c.contacto ? ` - Contacto: ${c.contacto}` : ""}`} />
+            ))}
+          </datalist>
+        </div>
+
+        <div className="form-group"><label>Fecha de Ingreso *</label><input type="date" value={form.fechaIngreso} onChange={(e) => set("fechaIngreso", e.target.value)} /></div>
+        <div className="form-group"><label>Estado</label><select value={form.estado} onChange={(e) => set("estado", e.target.value)}><option value="Activo">Activo</option><option value="Inactivo">Inactivo</option></select></div>
+        
+        <div className="form-group" style={{ gridColumn: "1 / -1", background: "#f8fafc", padding: "15px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+          <label style={{ fontSize: "14px", fontWeight: "700", color: "#0f172a", marginBottom: "8px", display: "block" }}>
+            🪪 Credencial Virtual (Asignación Automática)
+          </label>
+          {initial ? (
+            <p style={{ margin: 0, fontSize: "14px", color: "#475569" }}>✅ Este perfil ya tiene su QR guardado. (Si el estado cambia a Inactivo, la credencial se liberará automáticamente).</p>
+          ) : (
+            <p style={{ margin: 0, fontSize: "14px", color: availableCount > 0 ? "#166534" : "#dc2626" }}>
+              {availableCount > 0 ? `✨ Al guardar, se le asignará automáticamente el siguiente folio disponible (Quedan ${availableCount}).` : `⚠️ No quedan folios precargados. El sistema generará un folio VIRTUAL de emergencia.`}
+            </p>
+          )}
+        </div>
+      </div>
+      <div className="form-actions">
+        <button className="btn-secondary" onClick={onCancel} disabled={loading}>Cancelar</button>
+        <button className="btn-primary" onClick={handleSubmit} disabled={loading}>{loading ? "Guardando…" : initial ? "Actualizar" : "Registrar y Asignar QR"}</button>
+      </div>
+    </div>
+  );
+}
+
+function ContractorForm({ onSave, onCancel, initial }) {
+  const [form, setForm] = useState(initial || EMPTY_CONTRACTOR_FORM);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const handleRutChange = (e) => set("rut", formatRut(e.target.value));
+
+  const handleSubmit = async () => {
+    if (!form.rut || !form.nombre) { toast.error("Completa RUT y Nombre de Empresa."); return; }
+    if (!validateRut(form.rut)) { toast.error("El RUT de la empresa no es válido."); return; }
+    setError(""); setLoading(true);
+    try { await onSave(form); } catch (e) { toast.error(e.message); }
+    setLoading(false);
+  };
+
+  return (
+    <div className="form-card">
+      <h3 className="form-title">{initial ? "Editar Contratista" : "Registrar Contratista"}</h3>
+      {error && <div className="alert-error">{error}</div>}
+      <div className="form-grid">
+        <div className="form-group"><label>RUT Empresa *</label><input value={form.rut} onChange={handleRutChange} placeholder="76.123.456-7" maxLength={12} /></div>
+        <div className="form-group"><label>Nombre Empresa *</label><input value={form.nombre} onChange={(e) => set("nombre", e.target.value)} placeholder="Ej: Constructora Alfa" /></div>
+        <div className="form-group"><label>Contacto (Opcional)</label><input value={form.contacto} onChange={(e) => set("contacto", e.target.value)} placeholder="Nombre o Teléfono" /></div>
+        <div className="form-group"><label>Estado</label><select value={form.estado} onChange={(e) => set("estado", e.target.value)}><option value="Activo">Activo</option><option value="Inactivo">Inactivo</option></select></div>
+      </div>
+      <div className="form-actions">
+        <button className="btn-secondary" onClick={onCancel} disabled={loading}>Cancelar</button>
+        <button className="btn-primary" onClick={handleSubmit} disabled={loading}>{loading ? "Guardando…" : "Registrar Contratista"}</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── MÓDULO DE GESTIÓN DE USUARIOS Y ROLES ──────
+function UsersManager({ rolesList, onSaveUser, onDeleteUser }) {
+  const [email, setEmail] = useState("");
+  const [rol, setRol] = useState("Operador");
+
+  const handleSave = () => {
+    if (!email.includes("@")) return toast.error("Ingresa un correo electrónico válido.");
+    onSaveUser(email.toLowerCase().trim(), rol);
+    setEmail("");
+  };
+
+  return (
+    <div style={{ maxWidth: "800px", margin: "0 auto", display: "flex", flexDirection: "column", gap: "20px" }}>
+      <div className="form-card">
+        <h3 className="form-title">Autorizar Nuevo Usuario</h3>
+        <p style={{ color: "#64748b", fontSize: "14px", marginBottom: "15px" }}>Otorga acceso a la plataforma vinculando el correo de Google de tu personal.</p>
+        <div className="form-grid" style={{ background: "#f8fafc", padding: "20px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+          <div className="form-group"><label>Correo de Google (Gmail/Workspace) *</label><input value={email} onChange={e => setEmail(e.target.value)} placeholder="ejemplo@gmail.com" /></div>
+          <div className="form-group">
+            <label>Rol de Acceso *</label>
+            <select value={rol} onChange={e => setRol(e.target.value)} style={{ fontWeight: "bold" }}>
+              <option value="Operador">Operador (Solo imprime tarjas)</option>
+              <option value="Supervisor">Supervisor (Personal y Tarjas)</option>
+              <option value="Admin">Administrador (Acceso Total)</option>
+            </select>
+          </div>
+          <div className="form-group" style={{ gridColumn: "1 / -1" }}>
+            <button className="btn-primary" onClick={handleSave}>➕ Dar Acceso</button>
+          </div>
+        </div>
+      </div>
+
+      <div className="form-card">
+        <h3 className="form-title">Usuarios Autorizados ({rolesList.length})</h3>
+        <div className="table-wrap">
+          <table className="workers-table">
+            <thead><tr><th>Correo Electrónico</th><th>Nivel de Acceso</th><th style={{textAlign: "center"}}>Revocar</th></tr></thead>
+            <tbody>
+              {rolesList.map(u => (
+                <tr key={u.id}>
+                  <td style={{fontWeight: u.rol === 'Admin' ? 'bold' : 'normal'}}>{u.id}</td>
+                  <td><span className={`badge ${u.rol === 'Admin' ? 'badge-activo' : 'badge-inactivo'}`}>{u.rol}</span></td>
+                  <td style={{textAlign: "center"}}>
+                    <button className="btn-action btn-action-warn" onClick={() => onDeleteUser(u.id)} title="Revocar Acceso">🗑️</button>
+                  </td>
+                </tr>
+              ))}
+              {rolesList.length === 0 && (
+                <tr><td colSpan="3" style={{textAlign:"center", padding: "20px", color: "#64748b"}}>No hay usuarios registrados.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── APP PRINCIPAL ───────────────────────────────────────
+export default function App() {
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  
+  const [userRole, setUserRole] = useState(null); 
+  const [isOnline, setIsOnline] = useState(typeof navigator !== "undefined" ? navigator.onLine : true);
+  
+  const [workers, setWorkers] = useState([]);
+  const [contractors, setContractors] = useState([]);
+  const [credentials, setCredentials] = useState([]);
+  const [camposList, setCamposList] = useState([]); 
+  const [rolesList, setRolesList] = useState([]); 
+  
+  const [loadingData, setLoadingData] = useState(true);
+  const [view, setView] = useState("tarjas"); 
+  const [editTarget, setEditTarget] = useState(null);
+  const [qrWorker, setQrWorker] = useState(null);
+  const [logoUrl, setLogoUrl] = useState(localStorage.getItem("logoUrl") || "");
+  const [search, setSearch] = useState("");
+  const [filterEstado, setFilterEstado] = useState("Todos");
+  const logoInputRef = useRef(null);
+
+  useEffect(() => {
+    const handleOnline = () => { setIsOnline(true); toast.success("Conexión restablecida."); };
+    const handleOffline = () => { setIsOnline(false); toast.error("Sin internet. Trabajando offline."); };
+    window.addEventListener("online", handleOnline); window.addEventListener("offline", handleOffline);
+    return () => { window.removeEventListener("online", handleOnline); window.removeEventListener("offline", handleOffline); };
+  }, []);
+
+  useEffect(() => {
+    return onAuthStateChanged(auth, async (u) => {
+      setUser(u);
+      if (u) {
+        // Consultamos dinámicamente a la base de datos el rol del usuario logueado
+        const roleDoc = await getDoc(doc(db, "userRoles", u.email.toLowerCase()));
+        if (roleDoc.exists()) {
+          const assignedRole = roleDoc.data().rol;
+          setUserRole(assignedRole);
+          if(assignedRole === "Operador") setView("tarjas");
+          else setView("workers_list");
+        } else {
+          setUserRole("Desconocido"); 
+        }
+      } else {
+        setUserRole(null);
+      }
+      setAuthLoading(false);
+    });
+  }, []);
+
+  // Carga de datos dependiendo del nivel de acceso con Paracaídas de Seguridad
+  useEffect(() => {
+    if (!user || userRole === "Desconocido" || userRole === null) return;
+    setLoadingData(true);
+
+    const unsubs = [];
+
+    // Manejador de errores para caídas de conexión o pérdida repentina de permisos
+    const handleError = (error) => {
+      console.error("Error de conexión/permisos:", error);
+      if (error.code === "permission-denied") {
+        setUserRole("Desconocido");
+      }
+    };
+
+    const qcampos = query(collection(db, "campos"), orderBy("creadoEn", "desc"));
+    unsubs.push(onSnapshot(qcampos, snap => setCamposList(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(i => !i.eliminado)), handleError));
+
+    if (userRole === "Admin" || userRole === "Supervisor") {
+      const qw = query(collection(db, "workers"), orderBy("creadoEn", "desc"));
+      const qc = query(collection(db, "contractors"), orderBy("creadoEn", "desc"));
+      unsubs.push(onSnapshot(qw, snap => setWorkers(snap.docs.map(d => ({ id: d.id, ...d.data() }))), handleError));
+      unsubs.push(onSnapshot(qc, snap => setContractors(snap.docs.map(d => ({ id: d.id, ...d.data() }))), handleError));
+    }
+
+    if (userRole === "Admin") {
+      const qcred = query(collection(db, "credentials"), orderBy("creadoEn", "desc"));
+      const qroles = query(collection(db, "userRoles"));
+      unsubs.push(onSnapshot(qcred, snap => setCredentials(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(i => !i.eliminado)), handleError));
+      unsubs.push(onSnapshot(qroles, snap => setRolesList(snap.docs.map(d => ({ id: d.id, ...d.data() }))), handleError));
+    }
+
+    setLoadingData(false);
+    return () => unsubs.forEach(unsub => unsub());
+  }, [user, userRole]);
+
+  const handleLogin = async () => { try { await signInWithPopup(auth, googleProvider); } catch (e) { toast.error("Error al ingresar"); } };
+  const handleLogout = async () => { await signOut(auth); setView("tarjas"); setUserRole(null); };
+  
+  const handleLogoUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => { localStorage.setItem("logoUrl", ev.target.result); setLogoUrl(ev.target.result); };
+    reader.readAsDataURL(file);
+  };
+
+  const handleBulkUploadCredentials = async (credsArray) => {
+    setLoadingData(true);
+    try {
+      const batch = writeBatch(db);
+      credsArray.forEach(cred => {
+        const docRef = doc(collection(db, "credentials"));
+        batch.set(docRef, { folio: cred.folio, codigo: cred.codigo, estado: "Disponible", asignadoA: null, creadoEn: serverTimestamp(), eliminado: false });
+      });
+      await batch.commit();
+      toast.success("Credenciales cargadas a la nube");
+    } catch (error) { toast.error("Error al cargar códigos: " + error.message); }
+    setLoadingData(false);
+  };
+
+  const handleDeleteCredential = async (id) => {
+    if (!window.confirm("¿Seguro que deseas borrar esta credencial?")) return;
+    setLoadingData(true);
+    try {
+      await updateDoc(doc(db, "credentials", id), { eliminado: true, eliminadoEn: serverTimestamp() });
+      toast.success("Credencial eliminada");
+    } catch (e) {
+      toast.error("Error al eliminar: " + e.message);
+    }
+    setLoadingData(false);
+  };
+
+  const handleSaveUserRole = async (emailToSave, rolToSave) => {
+    try { await setDoc(doc(db, "userRoles", emailToSave), { rol: rolToSave, creadoEn: serverTimestamp() }); toast.success(`Acceso otorgado a ${emailToSave}`); } 
+    catch (e) { toast.error("Error al guardar usuario"); }
+  };
+  const handleDeleteUserRole = async (emailToDelete) => {
+    // Evitamos borrar la propia cuenta por accidente para no quedar bloqueados
+    if (emailToDelete === user.email.toLowerCase()) {
+      toast.error("No puedes revocar tu propio acceso desde aquí.");
+      return;
+    }
+    if(!window.confirm(`¿Quitar el acceso a ${emailToDelete}?`)) return;
+    await deleteDoc(doc(db, "userRoles", emailToDelete)); toast.success("Acceso revocado");
+  };
+  
+  const handleSaveCampo = async (data, id) => {
+    setLoadingData(true);
+    try {
+      if (id) { await updateDoc(doc(db, "campos", id), { ...data, actualizadoEn: serverTimestamp() }); toast.success("Centro actualizado"); } 
+      else { await addDoc(collection(db, "campos"), { ...data, creadoEn: serverTimestamp() }); toast.success("Centro registrado"); }
+    } catch (error) { toast.error("Error al guardar: " + error.message); }
+    setLoadingData(false);
+  };
+  const handleDeleteCampo = async (id) => {
+    if (!window.confirm("¿Seguro que deseas ocultar este Centro de Costo?")) return;
+    setLoadingData(true); try { await updateDoc(doc(db, "campos", id), { eliminado: true, eliminadoEn: serverTimestamp() }); toast.success("Centro ocultado"); } catch (e) { toast.error("Error: " + e.message); } setLoadingData(false);
+  };
+  const handleSaveWorker = async (form) => {
+    const q = query(collection(db, "workers"), where("rut", "==", form.rut));
+    const snap = await getDocs(q);
+    if (!editTarget && !snap.empty) throw new Error("RUT ya registrado.");
+    if (editTarget && snap.docs.find(doc => doc.id !== editTarget.id)) throw new Error("RUT pertenece a otro trabajador.");
+    let finalForm = { ...form };
+    if (!editTarget) {
+      const availableCredentials = credentials.filter(c => c.estado === "Disponible").sort((a, b) => String(a.folio).localeCompare(String(b.folio), undefined, { numeric: true, sensitivity: 'base' }));
+      if (availableCredentials.length > 0) {
+        const nextCred = availableCredentials[0]; finalForm.codigoQR = nextCred.codigo; finalForm.folioQR = nextCred.folio;
+        await updateDoc(doc(db, "credentials", nextCred.id), { estado: "Asignado", asignadoA: form.rut, actualizadoEn: serverTimestamp() });
+      } else { finalForm.codigoQR = generateWorkerCode(); finalForm.folioQR = "V-AUTO-" + Math.floor(Math.random() * 10000); }
+      await addDoc(collection(db, "workers"), { ...finalForm, creadoEn: serverTimestamp(), actualizadoEn: serverTimestamp() }); toast.success("Trabajador registrado");
+    } else {
+      if (form.estado === "Inactivo" && editTarget.codigoQR) {
+        const credDoc = credentials.find(c => c.codigo === editTarget.codigoQR);
+        if (credDoc) { await updateDoc(doc(db, "credentials", credDoc.id), { estado: "Disponible", asignadoA: null, actualizadoEn: serverTimestamp() }); } 
+        else { await addDoc(collection(db, "credentials"), { folio: editTarget.folioQR || "RECICLADO-" + Math.floor(Math.random() * 1000), codigo: editTarget.codigoQR, estado: "Disponible", asignadoA: null, creadoEn: serverTimestamp(), eliminado: false }); }
+        finalForm.codigoQR = null; finalForm.folioQR = null;
+      } else if (form.estado === "Activo" && editTarget.estado === "Inactivo" && !editTarget.codigoQR) {
+        const today = new Date(); finalForm.fechaIngreso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+        const availableCredentials = credentials.filter(c => c.estado === "Disponible").sort((a, b) => String(a.folio).localeCompare(String(b.folio), undefined, { numeric: true, sensitivity: 'base' }));
+        if (availableCredentials.length > 0) {
+          const nextCred = availableCredentials[0]; finalForm.codigoQR = nextCred.codigo; finalForm.folioQR = nextCred.folio;
+          await updateDoc(doc(db, "credentials", nextCred.id), { estado: "Asignado", asignadoA: form.rut, actualizadoEn: serverTimestamp() });
+        } else { finalForm.codigoQR = generateWorkerCode(); finalForm.folioQR = "V-AUTO-" + Math.floor(Math.random() * 10000); }
+      }
+      await updateDoc(doc(db, "workers", editTarget.id), { ...finalForm, actualizadoEn: serverTimestamp() }); toast.success("Ficha actualizada");
+    }
+    setView("workers_list"); setEditTarget(null);
+  };
+  const handleSaveContractor = async (form) => {
+    const q = query(collection(db, "contractors"), where("rut", "==", form.rut));
+    const snap = await getDocs(q);
+    if (!editTarget && !snap.empty) throw new Error("La empresa ya existe.");
+    if (editTarget && snap.docs.find(doc => doc.id !== editTarget.id)) throw new Error("El RUT pertenece a otra empresa.");
+    if (editTarget) { await updateDoc(doc(db, "contractors", editTarget.id), { ...form, actualizadoEn: serverTimestamp() }); toast.success("Contratista actualizado"); } 
+    else { await addDoc(collection(db, "contractors"), { ...form, creadoEn: serverTimestamp(), actualizadoEn: serverTimestamp() }); toast.success("Contratista registrado"); }
+    setView("contractors_list"); setEditTarget(null);
+  };
+  const handleToggleEstado = async (item, collectionName) => {
+    const nuevoEstado = item.estado === "Activo" ? "Inactivo" : "Activo";
+    setLoadingData(true);
+    try {
+      if (collectionName === "workers") {
+        if (nuevoEstado === "Activo") {
+          if (!window.confirm(`¿Seguro que deseas Reactivar a ${item.nombre}? Su fecha de ingreso se actualizará a hoy.`)) { setLoadingData(false); return; }
+          const today = new Date(); const fechaHoy = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+          let updates = { estado: nuevoEstado, fechaIngreso: fechaHoy, actualizadoEn: serverTimestamp() };
+          if (!item.codigoQR) {
+            const availableCredentials = credentials.filter(c => c.estado === "Disponible").sort((a, b) => String(a.folio).localeCompare(String(b.folio), undefined, { numeric: true, sensitivity: 'base' }));
+            if (availableCredentials.length > 0) {
+              const nextCred = availableCredentials[0]; updates.codigoQR = nextCred.codigo; updates.folioQR = nextCred.folio;
+              await updateDoc(doc(db, "credentials", nextCred.id), { estado: "Asignado", asignadoA: item.rut, actualizadoEn: serverTimestamp() });
+            } else { updates.codigoQR = generateWorkerCode(); updates.folioQR = "V-AUTO-" + Math.floor(Math.random() * 10000); }
+          }
+          await updateDoc(doc(db, collectionName, item.id), updates);
+        } else {
+          if (!window.confirm(`¿Seguro que deseas Desactivar a ${item.nombre}? Su credencial quedará libre automáticamente.`)) { setLoadingData(false); return; }
+          if (item.codigoQR) {
+            const credDoc = credentials.find(c => c.codigo === item.codigoQR);
+            if (credDoc) { await updateDoc(doc(db, "credentials", credDoc.id), { estado: "Disponible", asignadoA: null, actualizadoEn: serverTimestamp() }); } 
+            else { await addDoc(collection(db, "credentials"), { folio: item.folioQR || "RECICLADO-" + Math.floor(Math.random() * 1000), codigo: item.codigoQR, estado: "Disponible", asignadoA: null, creadoEn: serverTimestamp(), eliminado: false }); }
+          }
+          await updateDoc(doc(db, collectionName, item.id), { estado: nuevoEstado, codigoQR: null, folioQR: null, actualizadoEn: serverTimestamp() });
+        }
+      } else { await updateDoc(doc(db, collectionName, item.id), { estado: nuevoEstado, actualizadoEn: serverTimestamp() }); }
+      toast.success("Estado actualizado");
+    } catch (e) { toast.error("Error: " + e.message); }
+    setLoadingData(false);
+  };
+
+  const isWorkerView = view.includes("workers");
+  const listToFilter = isWorkerView ? workers : contractors;
+  const filteredList = listToFilter.filter((item) => {
+    const q = search.toLowerCase();
+    const matchesSearch = !q || item.nombre?.toLowerCase().includes(q) || item.rut?.toLowerCase().includes(q) || item.apellido?.toLowerCase().includes(q) || item.contratista?.toLowerCase().includes(q) || item.folioQR?.toLowerCase().includes(q); 
+    const matchesEstado = filterEstado === "Todos" || item.estado === filterEstado;
+    return matchesSearch && matchesEstado;
+  });
+
+  // 1. Si está cargando la autenticación, o si el usuario entró pero aún no sabemos su rol, mostramos el spinner.
+  if (authLoading || (user && userRole === null)) {
+    return <div className="splash"><div className="splash-spinner" /></div>;
+  }
+
+  // 2. Si no hay usuario, mostramos el Login
+  if (!user) {
+    return (
+      <div className="login-screen">
+        <Toaster position="top-center" />
+        <div className="login-card">
+          <img src="/logo.png" alt="Logo Corporativo" className="login-logo" />
+          <h1 className="login-title">Control de Campo</h1>
+          <p className="login-sub">Control de trazabilidad, personal y cosecha</p>
+          <button className="btn-google" onClick={handleLogin}>Ingresar con Google</button>
+        </div>
+      </div>
+    );
+  }
+
+  // 3. Si el usuario no tiene permisos, mostramos Acceso Denegado
+  if (userRole === "Desconocido") {
+    return (
+      <div className="login-screen">
+        <div className="login-card" style={{ borderTop: "4px solid #ef4444" }}>
+          <h1 className="login-title" style={{color: "#ef4444"}}>Acceso Denegado</h1>
+          <p className="login-sub">El correo <b>{user.email}</b> no está autorizado en el sistema.</p>
+          <button className="btn-secondary" onClick={handleLogout} style={{marginTop: "20px"}}>Cerrar Sesión</button>
+        </div>
+      </div>
+    );
+  }
+
+  // 4. Si pasa todos los filtros, recién aquí renderizamos la app
+  return (
+    <div className="app-layout">
+      <Toaster position="top-center" />
+      <TopBar user={user} userRole={userRole} onLogout={handleLogout} isOnline={isOnline} />
+
+      <main className="main-content" style={{ padding: "20px" }}>
+        
+        <div className="view-tabs" style={{ display: "flex", gap: "10px", marginBottom: "25px", borderBottom: "2px solid #e2e8f0", paddingBottom: "12px", flexWrap: "wrap" }}>
+          {(userRole === "Admin" || userRole === "Supervisor") && (
+            <>
+              <button onClick={() => { setView("workers_list"); setSearch(""); setEditTarget(null); }} style={{ padding: "10px 20px", border: "none", borderRadius: "6px", backgroundColor: view.includes("workers") ? "#101c38" : "#f1f5f9", color: view.includes("workers") ? "#ffffff" : "#475569", cursor: "pointer", fontWeight: "600", fontSize: "14px", transition: "all 0.2s" }}>👥 Personal</button>
+              <button onClick={() => { setView("contractors_list"); setSearch(""); setEditTarget(null); }} style={{ padding: "10px 20px", border: "none", borderRadius: "6px", backgroundColor: view.includes("contractors") ? "#101c38" : "#f1f5f9", color: view.includes("contractors") ? "#ffffff" : "#475569", cursor: "pointer", fontWeight: "600", fontSize: "14px", transition: "all 0.2s" }}>🏢 Contratistas</button>
+            </>
+          )}
+
+          <button onClick={() => { setView("tarjas"); setSearch(""); setEditTarget(null); }} style={{ padding: "10px 20px", border: "none", borderRadius: "6px", backgroundColor: view === "tarjas" ? "#16a34a" : "#f1f5f9", color: view === "tarjas" ? "#ffffff" : "#475569", cursor: "pointer", fontWeight: "600", fontSize: "14px", transition: "all 0.2s" }}>🏷️ Tarjas de Cosecha</button>
+          
+          {userRole === "Admin" && (
+            <>
+              <button onClick={() => { setView("campos"); setSearch(""); setEditTarget(null); }} style={{ padding: "10px 20px", border: "none", borderRadius: "6px", backgroundColor: view === "campos" ? "#b45309" : "#f1f5f9", color: view === "campos" ? "#ffffff" : "#475569", cursor: "pointer", fontWeight: "600", fontSize: "14px", transition: "all 0.2s" }}>📍 Campos y C. Costo</button>
+              <button onClick={() => { setView("credentials_list"); setSearch(""); setEditTarget(null); }} style={{ padding: "10px 20px", border: "none", borderRadius: "6px", backgroundColor: view === "credentials_list" ? "#101c38" : "#f1f5f9", color: view === "credentials_list" ? "#ffffff" : "#475569", cursor: "pointer", fontWeight: "600", fontSize: "14px", transition: "all 0.2s" }}>🪪 Gestión Credenciales</button>
+              <button onClick={() => { setView("users"); setSearch(""); setEditTarget(null); }} style={{ padding: "10px 20px", border: "none", borderRadius: "6px", backgroundColor: view === "users" ? "#ef4444" : "#f1f5f9", color: view === "users" ? "#ffffff" : "#475569", cursor: "pointer", fontWeight: "600", fontSize: "14px", transition: "all 0.2s" }}>🛡️ Usuarios</button>
+            </>
+          )}
+        </div>
+
+        {view === "workers_form" && <WorkerForm onSave={handleSaveWorker} onCancel={() => { setView("workers_list"); setEditTarget(null); }} initial={editTarget} contractorsList={contractors} credentialsList={credentials} />}
+        {view === "contractors_form" && <ContractorForm onSave={handleSaveContractor} onCancel={() => { setView("contractors_list"); setEditTarget(null); }} initial={editTarget} />}
+        {view === "tarjas" && <TarjasManager camposList={camposList} empresasMaestras={EMPRESAS_MAESTRAS} />}
+        {view === "campos" && userRole === "Admin" && <CamposManager camposList={camposList} onSave={handleSaveCampo} onDelete={handleDeleteCampo} loading={loadingData} empresasMaestras={EMPRESAS_MAESTRAS} />}
+        {view === "users" && userRole === "Admin" && <UsersManager rolesList={rolesList} onSaveUser={handleSaveUserRole} onDeleteUser={handleDeleteUserRole} />}
+        {view === "credentials_list" && userRole === "Admin" && <CredentialsManager credentialsList={credentials} onBulkUpload={handleBulkUploadCredentials} onDelete={handleDeleteCredential} loading={loadingData} />}
+
+        {(view === "workers_list" || view === "contractors_list") && (userRole === "Admin" || userRole === "Supervisor") && (
+          <>
+            <div className="stats-row">
+              <div className="stat-card"><div className="stat-label">Total {isWorkerView ? "Trabajadores" : "Empresas"}</div><div className="stat-num">{listToFilter.length}</div></div>
+              <div className="stat-card stat-activo"><div className="stat-label">Activos</div><div className="stat-num">{listToFilter.filter(w => w.estado === "Activo").length}</div></div>
+              <div className="stat-card stat-inactivo"><div className="stat-label">Inactivos</div><div className="stat-num">{listToFilter.filter(w => w.estado === "Inactivo").length}</div></div>
+              <div className="stat-card stat-logo" onClick={() => logoInputRef.current.click()} title="Cambiar logo">
+                {logoUrl ? <img src={logoUrl} alt="Logo empresa" className="stat-logo-img" /> : <span className="stat-logo-placeholder">📷 Logo</span>}
+                <input ref={logoInputRef} type="file" accept="image/*" onChange={handleLogoUpload} style={{ display: "none" }} />
+              </div>
+            </div>
+
+            <div className="toolbar">
+              <input className="search-input" placeholder={isWorkerView ? "Buscar trabajador por nombre, RUT, folio..." : "Buscar contratista por empresa, RUT..."} value={search} onChange={(e) => setSearch(e.target.value)} />
+              <select className="filter-select" value={filterEstado} onChange={(e) => setFilterEstado(e.target.value)}>
+                <option value="Todos">Todos</option><option value="Activo">Activos</option><option value="Inactivo">Inactivos</option>
+              </select>
+              <button className="btn-primary" onClick={() => { setEditTarget(null); setView(isWorkerView ? "workers_form" : "contractors_form"); }}>+ Nuevo {isWorkerView ? "Trabajador" : "Contratista"}</button>
+            </div>
+
+            {loadingData ? (
+              <div className="loading-wrap"><div className="splash-spinner" /></div>
+            ) : filteredList.length === 0 ? (
+              <div className="empty-state"><div className="empty-icon">🔍</div><p>No se encontraron resultados.</p></div>
+            ) : (
+              <div className="table-wrap">
+                <table className="workers-table">
+                  <thead>
+                    <tr>
+                      <th>RUT</th>
+                      <th>Nombre</th>
+                      {isWorkerView ? <th>Contratista</th> : <th>Contacto</th>}
+                      {isWorkerView && <th>Folio Credencial</th>}
+                      <th>Estado</th>
+                      <th>Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredList.map((item) => (
+                      <tr key={item.id}>
+                        <td className="cell-mono">{formatRut(item.rut)}</td>
+                        <td className="cell-name">{item.nombre} {isWorkerView ? item.apellido : ""}</td>
+                        <td>{isWorkerView ? (item.contratista || "—") : (item.contacto || "—")}</td>
+                        
+                        {isWorkerView && (
+                          <td className="cell-mono" style={{color: "#64748b", fontWeight: "600"}}>
+                            {item.estado === "Inactivo" ? "—" : (item.folioQR || "—")}
+                          </td>
+                        )}
+
+                        <td><span className={`badge ${item.estado === "Activo" ? "badge-activo" : "badge-inactivo"}`}>{item.estado}</span></td>
+                        <td className="cell-actions">
+                          
+                          {isWorkerView && item.codigoQR && item.estado === "Activo" && (
+                            <button className="btn-action" title="Ver QR" onClick={() => setQrWorker(item)}>QR</button>
+                          )}
+
+                          <button className="btn-action" title="Editar" onClick={() => { setEditTarget(item); setView(isWorkerView ? "workers_form" : "contractors_form"); }}>✏️</button>
+                          <button className={`btn-action ${item.estado === "Activo" ? "btn-action-warn" : "btn-action-ok"}`} onClick={() => handleToggleEstado(item, isWorkerView ? "workers" : "contractors")}>
+                            {item.estado === "Activo" ? "🔴" : "🟢"}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
+      </main>
+
+      {qrWorker && <QRCard worker={qrWorker} logoUrl={logoUrl} onClose={() => setQrWorker(null)} />}
+    </div>
+  );
+}
+
+function TopBar({ user, userRole, onLogout, isOnline }) {
+  return (
+    <header className="topbar">
+      <div className="topbar-brand">
+        <img src="/logo.png" alt="Logo Corporativo" className="topbar-logo" />
+        <span className="topbar-title">Control de Campo</span>
+      </div>
+      <div className="topbar-user">
+        {!isOnline && <span style={{ background: "#ef4444", color: "white", padding: "4px 10px", borderRadius: "12px", fontSize: "11px", fontWeight: "bold", marginRight: "12px" }}>📵 OFFLINE</span>}
+        <span style={{color: "#8ba2c4", fontSize: "11px", fontWeight: "bold", marginRight: "10px", textTransform: "uppercase"}}>{userRole}</span>
+        <img src={user.photoURL} alt={user.displayName} className="user-avatar" />
+        <span className="user-name">{user.displayName}</span>
+        <button className="btn-logout" onClick={onLogout}>Salir</button>
+      </div>
+    </header>
+  );
+}
+</file>
+
+</files>
