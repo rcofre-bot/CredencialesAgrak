@@ -807,3 +807,72 @@ body {
   }
 }
 
+/* =========================================
+   🎨 MEJORAS DE CONTRASTE Y PROFUNDIDAD 🎨
+   ========================================= */
+
+/* 1. Fondo general gris azulado para que las tarjetas blancas resalten */
+body, html {
+  background-color: #e2e8f0 !important; 
+}
+
+.app-layout {
+  background-color: #e2e8f0 !important;
+  min-height: 100vh;
+}
+
+/* 2. Barra superior oscura (Estilo Enterprise) */
+.topbar {
+  background-color: #101c38 !important; /* Azul marino oscuro */
+  border-bottom: none !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
+}
+
+.topbar-title {
+  color: #ffffff !important;
+}
+
+.user-name {
+  color: #f8fafc !important; /* Texto blanco suave */
+}
+
+/* Invierte el color del botón "Salir" para que se vea bien en fondo oscuro */
+.btn-logout {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+}
+
+.btn-logout:hover {
+  background-color: #ef4444 !important; /* Rojo al pasar el mouse */
+  border-color: #ef4444 !important;
+}
+
+/* 3. Tarjetas con más "elevación" (Sombra más pronunciada) */
+.form-card, .login-card {
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1) !important;
+  border: 1px solid #cbd5e1 !important; 
+  background-color: #ffffff !important;
+}
+
+/* 4. Enmarcar la botonera de navegación (Opcional, para darle más orden) */
+.view-tabs {
+  background-color: #cbd5e1 !important;
+  padding: 10px 15px !important;
+  border-radius: 10px;
+  border-bottom: none !important;
+  box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06);
+}
+
+/* 5. Resaltar logos en la barra superior oscura */
+.topbar-brand {
+  background-color: #ffffff !important;
+  padding: 4px 15px !important;
+  border-radius: 8px !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2) !important;
+}
+
+/* Aclarar un poco el rol del usuario (Admin/Operador) para que se lea mejor en el fondo oscuro */
+.topbar-user span:first-child {
+  color: #94a3b8 !important; 
+}

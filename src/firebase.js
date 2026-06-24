@@ -31,10 +31,10 @@
 
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
-// 🚨 NUEVO: Importamos las herramientas de caché offline
+// 🔥 Importamos la forma MODERNA de activar el caché en la versión 10+ de Firebase
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
 
-// Tu configuración actual de Firebase (no la borres, deja las tuyas)
+// ⚠️ MANTÉN TUS PROPIAS CREDENCIALES AQUÍ ⚠️
 const firebaseConfig = {
   apiKey: "AIzaSyD0u_0c0yKTnLarvpdar0ruIZ_-X_khWUs",
   authDomain: "credencialesagrak.firebaseapp.com",
@@ -44,16 +44,18 @@ const firebaseConfig = {
   appId: "1:1015802774112:web:80cc18c423cea86b26f905"
  };
 
-// Inicializamos la app
+// 1. Inicializamos la app
 const app = initializeApp(firebaseConfig);
 
-// Inicializamos Auth
+// 2. Inicializamos Autenticación
 const auth = getAuth(app);
 const googleProvider = new GoogleAuthProvider();
 
-// 🚨 NUEVO: Inicializamos Firestore con la Memoria Caché Activada
+// 3. 🔥 Inicializamos Firestore con el Modo Offline Moderno (Soporta múltiples pestañas)
 const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+  localCache: persistentLocalCache({
+    tabManager: persistentMultipleTabManager()
+  })
 });
 
-export { auth, googleProvider, db };
+export { db, auth, googleProvider };
