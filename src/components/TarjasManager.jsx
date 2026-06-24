@@ -24,7 +24,9 @@ export default function TarjasManager({ camposList, empresasMaestras }) {
   
   const [historial, setHistorial] = useState([]);
   const [inicio, setInicio] = useState(1);
-  const [ultimoCodigo, setUltimoCodigo] = useState("Cargando...");
+  
+// eslint-disable-next-line no-unused-vars
+const [ultimoCodigo, setUltimoCodigo] = useState("Cargando...");
   
   const [tarjas, setTarjas] = useState([]);
   const [procesando, setProcesando] = useState(false);
