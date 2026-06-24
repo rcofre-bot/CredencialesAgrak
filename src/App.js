@@ -80,54 +80,59 @@ export default function App() {
     });
   }, []);
 
+  // 🔥 SOLUCIÓN DEFINITIVA A REGLAS DE SEGURIDAD E ÍNDICES 🔥
   useEffect(() => {
     if (!user || userRole === "Desconocido" || userRole === null || userEmpresa === null) return;
     setLoadingData(true);
 
     const unsubs = [];
+    
+    // Si Firebase rechaza la consulta, nos envía a "Desconocido" (lo que veías como cierre de sesión)
     const handleError = (error) => {
+      console.error("Error de Lectura Firebase:", error);
       if (error.code === "permission-denied") setUserRole("Desconocido");
     };
 
-let qcampos = collection(db, "campos");
-    let qworkers = collection(db, "workers");
-    let qcontractors = collection(db, "contractors");
-    let qcred = collection(db, "credentials");
+    let qcampos, qworkers, qcontractors, qcred;
 
     if (userEmpresa !== "TODAS") {
-      qcampos = query(qcampos, where("empresaRut", "==", userEmpresa), orderBy("creadoEn", "desc"), limit(200));
-      qworkers = query(qworkers, where("empresaRut", "==", userEmpresa), orderBy("creadoEn", "desc"), limit(200));
-      qcontractors = query(qcontractors, where("empresaRut", "==", userEmpresa), orderBy("creadoEn", "desc"), limit(200));
-      
-      // 🔥 CORRECCIÓN: Quitamos el limit() a las credenciales para poder contar el stock completo
-      qcred = query(qcred, where("empresaRut", "==", userEmpresa), orderBy("creadoEn", "desc"));
+      // Usamos el 'where' para que las Reglas de Seguridad nos dejen pasar.
+      // NO usamos 'orderBy' aquí para evitar que Firebase pida el Índice Compuesto.
+      qcampos = query(collection(db, "campos"), where("empresaRut", "==", userEmpresa));
+      qworkers = query(collection(db, "workers"), where("empresaRut", "==", userEmpresa));
+      qcontractors = query(collection(db, "contractors"), where("empresaRut", "==", userEmpresa));
+      qcred = query(collection(db, "credentials"), where("empresaRut", "==", userEmpresa));
     } else {
-      qcampos = query(qcampos, orderBy("creadoEn", "desc"), limit(200));
-      qworkers = query(qworkers, orderBy("creadoEn", "desc"), limit(200));
-      qcontractors = query(qcontractors, orderBy("creadoEn", "desc"), limit(200));
-      
-      // 🔥 CORRECCIÓN: Quitamos el limit() a las credenciales para poder contar el stock completo
-      qcred = query(qcred, orderBy("creadoEn", "desc"));
+      // El admin global pide todo ordenado normalmente
+      qcampos = query(collection(db, "campos"), orderBy("creadoEn", "desc"));
+      qworkers = query(collection(db, "workers"), orderBy("creadoEn", "desc"));
+      qcontractors = query(collection(db, "contractors"), orderBy("creadoEn", "desc"));
+      qcred = query(collection(db, "credentials"), orderBy("creadoEn", "desc"));
     }
 
     unsubs.push(onSnapshot(qcampos, snap => {
       const docs = snap.docs.map(d => ({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) }));
+      // Ordenamos manualmente con JS si es supervisor
+      if (userEmpresa !== "TODAS") docs.sort((a,b) => (b.creadoEn?.seconds || 0) - (a.creadoEn?.seconds || 0));
       setCamposList(docs.filter(i => !i.eliminado));
     }, handleError));
 
     if (userRole === "Admin" || userRole === "Supervisor") {
       unsubs.push(onSnapshot(qworkers, snap => {
         const docs = snap.docs.map(d => ({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) }));
+        if (userEmpresa !== "TODAS") docs.sort((a,b) => (b.creadoEn?.seconds || 0) - (a.creadoEn?.seconds || 0));
         setWorkers(docs);
       }, handleError));
       
       unsubs.push(onSnapshot(qcontractors, snap => {
         const docs = snap.docs.map(d => ({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) }));
+        if (userEmpresa !== "TODAS") docs.sort((a,b) => (b.creadoEn?.seconds || 0) - (a.creadoEn?.seconds || 0));
         setContractors(docs);
       }, handleError));
       
       unsubs.push(onSnapshot(qcred, snap => {
         const docs = snap.docs.map(d => ({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) })).filter(i => !i.eliminado);
+        if (userEmpresa !== "TODAS") docs.sort((a,b) => (b.creadoEn?.seconds || 0) - (a.creadoEn?.seconds || 0));
         setCredentials(docs);
       }, handleError));
     }
@@ -182,7 +187,6 @@ let qcampos = collection(db, "campos");
     setLoadingData(false);
   };
 
-  // 🔥 NUEVA FUNCIÓN PARA CARGA MASIVA DE CAMPOS Y CUARTELES 🔥
   const handleBulkUploadCampos = async (items) => {
     setLoadingData(true);
     try {
@@ -197,9 +201,44 @@ let qcampos = collection(db, "campos");
     setLoadingData(false);
   };
 
-  const handleSaveUserRole = async (emailToSave, rolToSave, empresaRutToSave) => {
-    try { await setDoc(doc(db, "userRoles", emailToSave), { rol: rolToSave, empresaRut: empresaRutToSave, creadoEn: serverTimestamp() }); toast.success(`Acceso guardado a ${emailToSave}`); 
-    } catch (e) { toast.error("Error al guardar usuario."); }
+const handleSaveUserRole = async (emailToSave, rolToSave, empresaRutToSave) => {
+    try { 
+      // 1. Guardamos el acceso en la tabla de roles
+      await setDoc(doc(db, "userRoles", emailToSave), { 
+        rol: rolToSave, 
+        empresaRut: empresaRutToSave, 
+        creadoEn: serverTimestamp() 
+      }); 
+      
+      // 2. Preparamos los datos para el correo
+      const appUrl = window.location.origin; 
+      const nombreEmpresa = empresaRutToSave === "TODAS" ? "todas las empresas" : EMPRESAS_MAESTRAS.find(e => e.rut === empresaRutToSave)?.nombre || "tu empresa";
+      
+      // 3. Escribimos en la colección "mail" para despertar a la extensión Trigger Email
+      await addDoc(collection(db, "mail"), {
+        to: emailToSave,
+        message: {
+          subject: "Invitación de Acceso - AgroTrack",
+          html: `
+            <div style="font-family: Arial, sans-serif; color: #0f172a; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px;">
+              <h2 style="color: #101c38;">¡Bienvenido a AgroTrack!</h2>
+              <p>Hola,</p>
+              <p>Has sido habilitado en el sistema con el rol de <strong>${rolToSave}</strong> para <strong>${nombreEmpresa.replace("AGRICOLA ", "")}</strong>.</p>
+              <p>Para ingresar al sistema, haz clic en el botón de abajo e inicia sesión usando exactamente esta misma cuenta de correo de Google (${emailToSave}):</p>
+              <div style="text-align: center; margin: 30px 0;">
+                <a href="${appUrl}" style="background-color: #16a34a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Ingresar a la Plataforma</a>
+              </div>
+              <p style="font-size: 12px; color: #64748b;">Si tienes problemas para ingresar con el botón, copia y pega este enlace en tu navegador: <br>${appUrl}</p>
+            </div>
+          `
+        }
+      });
+
+      toast.success(`Acceso guardado e invitación enviada a ${emailToSave}`); 
+    } catch (e) { 
+      console.error(e);
+      toast.error("Error al guardar usuario o enviar invitación."); 
+    }
   };
 
   const handleDeleteUserRole = async (emailToDelete) => {
@@ -410,7 +449,6 @@ let qcampos = collection(db, "campos");
           {view === "contractors_bulk" && userRole === "Admin" && userEmpresa === "TODAS" && <ContractorsBulkManager onBulkUpload={handleBulkUploadContractors} onCancel={() => setView("contractors_list")} loading={loadingData} />}
           {view === "tarjas" && <TarjasManager camposList={camposList} empresasMaestras={empresasDisponiblesPanel} />}
           
-          {/* 🔥 LE PASAMOS LA FUNCIÓN ONBULKUPLOAD A CAMPOSMANAGER 🔥 */}
           {view === "campos" && userRole === "Admin" && <CamposManager camposList={camposList} onSave={handleSaveCampo} onBulkUpload={handleBulkUploadCampos} onDelete={handleDeleteCampo} loading={loadingData} empresasMaestras={empresasDisponiblesPanel} userEmpresa={userEmpresa} />}
           
           {view === "users" && userRole === "Admin" && <UsersManager rolesList={rolesList} onSaveUser={handleSaveUserRole} onDeleteUser={handleDeleteUserRole} />}
@@ -461,6 +499,7 @@ let qcampos = collection(db, "campos");
                       <th>Nombre</th>
                       {userEmpresa === "TODAS" && <th>Empresa</th>}
                       {isWorkerView ? <th>Contratista</th> : <th>Contacto</th>}
+                      {isWorkerView && <th>Cargo</th>}
                       {isWorkerView && <th>Folio Credencial</th>}
                       <th>Estado</th>
                       <th>Acciones</th>
@@ -482,6 +521,8 @@ let qcampos = collection(db, "campos");
 
                         <td>{isWorkerView ? (item.contratista || "—") : (item.contacto || "—")}</td>
                         
+                        {isWorkerView && <td style={{ fontSize: "12px", color: "#64748b" }}>{item.cargo || "—"}</td>}
+
                         {isWorkerView && (
                           <td className="cell-mono" style={{color: "#64748b", fontWeight: "600"}}>
                             {item.estado === "Inactivo" ? "—" : (item.folioQR || "—")}
