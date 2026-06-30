@@ -17,6 +17,7 @@ const ContractorsBulkManager = lazy(() => import("./components/ContractorsBulkMa
 const CredentialsManager = lazy(() => import("./components/CredentialsManager"));
 const UsersManager = lazy(() => import("./components/UsersManager"));
 const QRCard = lazy(() => import("./components/QRCard"));
+const CuadrillasManager = lazy(() => import("./components/CuadrillasManager"));
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -80,14 +81,12 @@ export default function App() {
     });
   }, []);
 
-  // 🔥 SOLUCIÓN DEFINITIVA A REGLAS DE SEGURIDAD E ÍNDICES 🔥
   useEffect(() => {
     if (!user || userRole === "Desconocido" || userRole === null || userEmpresa === null) return;
     setLoadingData(true);
 
     const unsubs = [];
     
-    // Si Firebase rechaza la consulta, nos envía a "Desconocido" (lo que veías como cierre de sesión)
     const handleError = (error) => {
       console.error("Error de Lectura Firebase:", error);
       if (error.code === "permission-denied") setUserRole("Desconocido");
@@ -96,14 +95,11 @@ export default function App() {
     let qcampos, qworkers, qcontractors, qcred;
 
     if (userEmpresa !== "TODAS") {
-      // Usamos el 'where' para que las Reglas de Seguridad nos dejen pasar.
-      // NO usamos 'orderBy' aquí para evitar que Firebase pida el Índice Compuesto.
       qcampos = query(collection(db, "campos"), where("empresaRut", "==", userEmpresa));
       qworkers = query(collection(db, "workers"), where("empresaRut", "==", userEmpresa));
       qcontractors = query(collection(db, "contractors"), where("empresaRut", "==", userEmpresa));
       qcred = query(collection(db, "credentials"), where("empresaRut", "==", userEmpresa));
     } else {
-      // El admin global pide todo ordenado normalmente
       qcampos = query(collection(db, "campos"), orderBy("creadoEn", "desc"));
       qworkers = query(collection(db, "workers"), orderBy("creadoEn", "desc"));
       qcontractors = query(collection(db, "contractors"), orderBy("creadoEn", "desc"));
@@ -112,7 +108,6 @@ export default function App() {
 
     unsubs.push(onSnapshot(qcampos, snap => {
       const docs = snap.docs.map(d => ({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) }));
-      // Ordenamos manualmente con JS si es supervisor
       if (userEmpresa !== "TODAS") docs.sort((a,b) => (b.creadoEn?.seconds || 0) - (a.creadoEn?.seconds || 0));
       setCamposList(docs.filter(i => !i.eliminado));
     }, handleError));
@@ -395,6 +390,20 @@ const handleSaveUserRole = async (emailToSave, rolToSave, empresaRutToSave) => {
 
   const empresasDisponiblesPanel = userEmpresa === "TODAS" ? EMPRESAS_MAESTRAS : EMPRESAS_MAESTRAS.filter(e => e.rut === userEmpresa);
 
+  // 🔥 Estilos base para los botones del menú de navegación 🔥
+  const getTabStyle = (isActive, colorActivo = "#101c38") => ({
+    padding: "8px 14px",
+    border: "none",
+    borderRadius: "6px",
+    backgroundColor: isActive ? colorActivo : "transparent",
+    color: isActive ? "#ffffff" : "#475569",
+    cursor: "pointer",
+    fontWeight: "600",
+    fontSize: "13px",
+    transition: "all 0.2s ease-in-out",
+    whiteSpace: "nowrap"
+  });
+
   return (
     <div className="app-layout">
       <Toaster position="top-center" />
@@ -424,21 +433,50 @@ const handleSaveUserRole = async (emailToSave, rolToSave, empresaRutToSave) => {
 
       <main className="main-content" style={{ padding: "20px" }}>
         
-        <div className="view-tabs" style={{ display: "flex", gap: "10px", marginBottom: "25px", flexWrap: "wrap" }}>
+        {/* 🔥 NUEVO MENÚ ENCAPSULADO Y COMPACTO 🔥 */}
+        <div className="view-tabs" style={{ 
+          display: "flex", 
+          gap: "8px", 
+          marginBottom: "25px", 
+          flexWrap: "wrap", 
+          alignItems: "center",
+          background: "#ffffff",
+          padding: "10px",
+          borderRadius: "8px",
+          border: "1px solid #cbd5e1",
+          boxShadow: "0 2px 4px rgba(0,0,0,0.02)"
+        }}>
           {(userRole === "Admin" || userRole === "Supervisor") && (
             <>
-              <button onClick={() => { setView("workers_list"); setSearch(""); setEditTarget(null); }} style={{ padding: "10px 20px", border: "none", borderRadius: "6px", backgroundColor: view.includes("workers") ? "#101c38" : "#f1f5f9", color: view.includes("workers") ? "#ffffff" : "#475569", cursor: "pointer", fontWeight: "600", fontSize: "14px", transition: "all 0.2s" }}>👥 Personal</button>
-              <button onClick={() => { setView("contractors_list"); setSearch(""); setEditTarget(null); }} style={{ padding: "10px 20px", border: "none", borderRadius: "6px", backgroundColor: view.includes("contractors") ? "#101c38" : "#f1f5f9", color: view.includes("contractors") ? "#ffffff" : "#475569", cursor: "pointer", fontWeight: "600", fontSize: "14px", transition: "all 0.2s" }}>🏢 Contratistas</button>
+              <button onClick={() => { setView("workers_list"); setSearch(""); setEditTarget(null); }} style={getTabStyle(view.includes("workers"))}>
+                👥 Personal
+              </button>
+              
+              <button onClick={() => { setView("cuadrillas"); setSearch(""); setEditTarget(null); }} style={getTabStyle(view === "cuadrillas")}>
+                🧑‍🤝‍🧑 Cuadrillas
+              </button>
+              
+              <button onClick={() => { setView("contractors_list"); setSearch(""); setEditTarget(null); }} style={getTabStyle(view.includes("contractors"))}>
+                🏢 Contratistas
+              </button>
             </>
           )}
 
-          <button onClick={() => { setView("tarjas"); setSearch(""); setEditTarget(null); }} style={{ padding: "10px 20px", border: "none", borderRadius: "6px", backgroundColor: view === "tarjas" ? "#16a34a" : "#f1f5f9", color: view === "tarjas" ? "#ffffff" : "#475569", cursor: "pointer", fontWeight: "600", fontSize: "14px", transition: "all 0.2s" }}>🏷️ Tarjas de Cosecha</button>
+          <button onClick={() => { setView("tarjas"); setSearch(""); setEditTarget(null); }} style={getTabStyle(view === "tarjas", "#16a34a")}>
+            🏷️ Tarjas de Cosecha
+          </button>
           
           {userRole === "Admin" && (
             <>
-              <button onClick={() => { setView("campos"); setSearch(""); setEditTarget(null); }} style={{ padding: "10px 20px", border: "none", borderRadius: "6px", backgroundColor: view === "campos" ? "#b45309" : "#f1f5f9", color: view === "campos" ? "#ffffff" : "#475569", cursor: "pointer", fontWeight: "600", fontSize: "14px", transition: "all 0.2s" }}>📍 Campos y C. Costo</button>
-              <button onClick={() => { setView("credentials_list"); setSearch(""); setEditTarget(null); }} style={{ padding: "10px 20px", border: "none", borderRadius: "6px", backgroundColor: view === "credentials_list" ? "#101c38" : "#f1f5f9", color: view === "credentials_list" ? "#ffffff" : "#475569", cursor: "pointer", fontWeight: "600", fontSize: "14px", transition: "all 0.2s" }}>🪪 Gestión Credenciales</button>
-              <button onClick={() => { setView("users"); setSearch(""); setEditTarget(null); }} style={{ padding: "10px 20px", border: "none", borderRadius: "6px", backgroundColor: view === "users" ? "#ef4444" : "#f1f5f9", color: view === "users" ? "#ffffff" : "#475569", cursor: "pointer", fontWeight: "600", fontSize: "14px", transition: "all 0.2s" }}>🛡️ Usuarios</button>
+              <button onClick={() => { setView("campos"); setSearch(""); setEditTarget(null); }} style={getTabStyle(view === "campos", "#b45309")}>
+                📍 Campos y C. Costo
+              </button>
+              <button onClick={() => { setView("credentials_list"); setSearch(""); setEditTarget(null); }} style={getTabStyle(view === "credentials_list")}>
+                🪪 Gestión Credenciales
+              </button>
+              <button onClick={() => { setView("users"); setSearch(""); setEditTarget(null); }} style={getTabStyle(view === "users", "#ef4444")}>
+                🛡️ Usuarios
+              </button>
             </>
           )}
         </div>
@@ -451,6 +489,8 @@ const handleSaveUserRole = async (emailToSave, rolToSave, empresaRutToSave) => {
           
           {view === "campos" && userRole === "Admin" && <CamposManager camposList={camposList} onSave={handleSaveCampo} onBulkUpload={handleBulkUploadCampos} onDelete={handleDeleteCampo} loading={loadingData} empresasMaestras={empresasDisponiblesPanel} userEmpresa={userEmpresa} />}
           
+          {view === "cuadrillas" && (userRole === "Admin" || userRole === "Supervisor") && <CuadrillasManager workersList={workers} userEmpresa={userEmpresa} empresasMaestras={empresasDisponiblesPanel} />}
+
           {view === "users" && userRole === "Admin" && <UsersManager rolesList={rolesList} onSaveUser={handleSaveUserRole} onDeleteUser={handleDeleteUserRole} />}
           {view === "credentials_list" && userRole === "Admin" && <CredentialsManager credentialsList={credentials} onBulkUpload={handleBulkUploadCredentials} onDelete={handleDeleteCredential} loading={loadingData} userEmpresa={userEmpresa} />}
         </Suspense>
