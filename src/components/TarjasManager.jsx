@@ -259,7 +259,7 @@ export default function TarjasManager({ camposList, empresasMaestras }) {
     return html;
   };
 
-  // 🔥 CALIBRACIÓN REAJUSTADA (SEGUNDO INTENTO) 🔥
+  // 🔥 CALIBRACIÓN FINA (CODIGO CSG CENTRADO) 🔥
   const getPlantillaTorretagleTarja = (tarjasAImprimir) => {
     let html = `<!DOCTYPE html>
     <html>
@@ -291,17 +291,14 @@ export default function TarjasManager({ camposList, empresasMaestras }) {
           text-overflow: ellipsis;
         }
         
-        /* AJUSTES APLICADOS SEGÚN LA SEGUNDA FOTOGRAFÍA: */
         .box-cantidad  { top: 22mm; left: 32mm; width: 42mm; height: 12mm; font-size: 11pt; }
         
-        /* CSG: Estaba muy abajo, lo subimos a 30mm */
-        .box-csg       { top: 30mm; left: 32mm; width: 42mm; height: 12mm; font-size: 11pt; }
+        /* CORRECCIÓN: El CSG se movió al punto medio perfecto (35mm) */
+        .box-csg       { top: 35mm; left: 32mm; width: 42mm; height: 12mm; font-size: 11pt; }
         
-        /* Productor y Especie: Estaban chocando con el techo, los bajamos 3mm */
         .box-productor { top: 58mm; left: 6mm; width: 68mm; height: 14mm; font-size: 11pt; }
         .box-especie   { top: 79mm; left: 6mm; width: 68mm; height: 14mm; font-size: 11pt; }
         
-        /* SDP, Cuartel, SAG y Fecha: Estaban totalmente arriba de la caja, los bajamos. */
         .box-sdp       { top: 109mm; left: 6mm; width: 32mm; height: 14mm; font-size: 10pt; }
         .box-cuartel   { top: 109mm; left: 42mm; width: 32mm; height: 14mm; font-size: 10pt; }
         
