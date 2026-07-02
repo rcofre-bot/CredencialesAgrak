@@ -259,7 +259,7 @@ export default function TarjasManager({ camposList, empresasMaestras }) {
     return html;
   };
 
-  // 🔥 CALIBRACIÓN FINA (CODIGO CSG DENTRO DEL CUADRO BLANCO) 🔥
+  // 🔥 CALIBRACIÓN FINA (CODIGO CSG MILIMÉTRICAMENTE CENTRADO A 38.5mm) 🔥
   const getPlantillaTorretagleTarja = (tarjasAImprimir) => {
     let html = `<!DOCTYPE html>
     <html>
@@ -293,8 +293,8 @@ export default function TarjasManager({ camposList, empresasMaestras }) {
         
         .box-cantidad  { top: 22mm; left: 32mm; width: 42mm; height: 12mm; font-size: 11pt; }
         
-        /* CORRECCIÓN: El CSG se movió de 35mm a 37mm para que entre y se centre en el cuadro blanco. */
-        .box-csg       { top: 37mm; left: 32mm; width: 42mm; height: 12mm; font-size: 11pt; }
+        /* CORRECCIÓN: El CSG se movió de 37mm a 38.5mm para el centrado final. */
+        .box-csg       { top: 38.5mm; left: 32mm; width: 42mm; height: 12mm; font-size: 11pt; }
         
         .box-productor { top: 58mm; left: 6mm; width: 68mm; height: 14mm; font-size: 11pt; }
         .box-especie   { top: 79mm; left: 6mm; width: 68mm; height: 14mm; font-size: 11pt; }
