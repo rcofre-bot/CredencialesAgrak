@@ -63,11 +63,24 @@ export default function CuadrillasManager({ workersList, userEmpresa, empresasMa
 
     setProcesando(true);
     try {
-      const empDatos = empresasMaestras.find(e => e.rut === empresaActiva);
-      const prefijo = empDatos?.prefijo || "CUAD";
+      // Prefijo universal estricto solicitado para Agrak Cuadrillas
+      const prefijo = "RAA";
       
-      const numeroAleatorio = Math.floor(10000 + Math.random() * 90000);
-      const codigoUnicoAgrak = `cuadrilla;${prefijo}${numeroAleatorio}`;
+      const cuadrillasEmpresa = cuadrillas.filter(c => c.empresaRut === empresaActiva);
+      let maxNum = 0;
+      
+      cuadrillasEmpresa.forEach(c => {
+        if (c.codigoQr) {
+          const match = c.codigoQr.match(/\d+$/);
+          if (match) {
+            const num = parseInt(match[0], 10);
+            if (num > maxNum) maxNum = num;
+          }
+        }
+      });
+      
+      const proximoNumero = maxNum + 1;
+      const codigoUnicoAgrak = `cos;${prefijo}${String(proximoNumero).padStart(4, '0')}`;
       
       const trabajadoresData = seleccionados.map(rut => {
         const w = workersList.find(x => x.rut === rut);
@@ -108,11 +121,11 @@ export default function CuadrillasManager({ workersList, userEmpresa, empresasMa
     }
   };
 
-  // 🔥 FORMATO TIPO CREDENCIAL OFICIAL (100x70mm) - UNA SOLA HOJA 🔥
+  // 🔥 FORMATO HORIZONTAL 100mm Ancho x 70mm Alto 🔥
   const imprimirQR = async (cuadrilla) => {
     const toastId = toast.loading("Generando credencial...");
     try {
-      const qrDataUrl = await QRCode.toDataURL(cuadrilla.codigoQr, { width: 300, margin: 0, color: { dark: "#000000", light: "#ffffff" } });
+      const qrDataUrl = await QRCode.toDataURL(cuadrilla.codigoQr, { width: 400, margin: 0, color: { dark: "#000000", light: "#ffffff" } });
       const empName = empresasMaestras.find(e => e.rut === cuadrilla.empresaRut)?.nombre.replace(" SPA", "") || "";
       
       const logoPath = cuadrilla.empresaRut === "79.737.880-1" ? "/convento.png" : cuadrilla.empresaRut === "76.064.746-2" ? "/torretagle.png" : "";
@@ -122,15 +135,15 @@ export default function CuadrillasManager({ workersList, userEmpresa, empresasMa
         <!DOCTYPE html>
         <html>
         <head>
-          <title>Credencial Cuadrilla</title>
+          <title>Credencial Cuadrilla 100x70</title>
           <style>
             * { box-sizing: border-box; margin: 0; padding: 0; }
             @page { size: 100mm 70mm; margin: 0; padding: 0; }
-            body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background: #fff; color: #000; width: 100mm; }
+            body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background: #fff; color: #000; width: 100mm; height: 70mm; }
             
             @media print {
-              html, body { width: 100mm !important; height: auto !important; margin: 0; padding: 0; overflow: visible !important; }
-              .label { height: 70mm !important; overflow: hidden !important; border: none !important; margin: 0 !important; page-break-after: always !important; }
+              html, body { width: 100mm !important; height: 70mm !important; margin: 0; padding: 0; overflow: hidden !important; }
+              .label { height: 70mm !important; width: 100mm !important; overflow: hidden !important; border: none !important; margin: 0 !important; page-break-after: always !important; }
             }
             
             .label { 
@@ -138,22 +151,28 @@ export default function CuadrillasManager({ workersList, userEmpresa, empresasMa
               display: flex; flex-direction: column; justify-content: space-between;
               background: #fff; overflow: hidden; border: 1px dashed #ccc;
             }
+            
             .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #000; padding-bottom: 2mm; margin-bottom: 2mm; }
             .header-text { text-align: right; }
-            .h-type { font-size: 8pt; font-weight: bold; color: #555; letter-spacing: 1px; }
-            .h-emp { font-size: 11pt; font-weight: 900; text-transform: uppercase; }
+            .h-type { font-size: 8pt; font-weight: bold; color: #555; letter-spacing: 1px; text-transform: uppercase; }
+            .h-emp { font-size: 11pt; font-weight: 900; text-transform: uppercase; margin-top: 0.5mm; }
             
             .body-row { display: flex; flex-direction: row; align-items: center; justify-content: space-between; flex-grow: 1; }
+            
             .info-col { flex: 1; display: flex; flex-direction: column; gap: 3mm; padding-right: 3mm; }
             .lbl { font-size: 7pt; font-weight: bold; border-bottom: 1px solid #000; text-transform: uppercase; margin-bottom: 1px; }
-            .val-big { font-size: 14pt; font-weight: 900; text-transform: uppercase; line-height: 1; }
-            .val-sub { font-size: 10pt; font-weight: bold; text-transform: uppercase; color: #222; }
+            .val-big { font-size: 13pt; font-weight: 900; text-transform: uppercase; line-height: 1.1; word-wrap: break-word; }
+            .val-sub { font-size: 9.5pt; font-weight: bold; text-transform: uppercase; color: #222; }
             
-            .qr-col { border: 2px solid #000; border-radius: 2mm; padding: 2mm; display: flex; flex-direction: column; align-items: center; background: #fff; }
-            .qr-img { width: 33mm; height: 33mm; object-fit: contain; }
+            .qr-col { 
+              border: 1.5mm solid #000; border-radius: 2mm; padding: 1.5mm; 
+              display: flex; flex-direction: column; align-items: center; justify-content: center; 
+              background: #fff; width: 40mm; height: 44mm; 
+            }
+            .qr-img { width: 34mm; height: 34mm; object-fit: contain; }
             .qr-txt { font-size: 12pt; font-weight: 900; margin-top: 1mm; letter-spacing: 0.5px; }
             
-            .footer { text-align: center; font-size: 7pt; font-weight: bold; border-top: 1px solid #000; padding-top: 1mm; margin-top: 2mm; }
+            .footer { text-align: center; font-size: 7pt; font-weight: bold; border-top: 1px solid #000; padding-top: 1.5mm; margin-top: 2mm; }
           </style>
         </head>
         <body>
@@ -162,7 +181,7 @@ export default function CuadrillasManager({ workersList, userEmpresa, empresasMa
             <div class="header">
               ${logoImg}
               <div class="header-text">
-                <div class="h-type">CREDENCIAL DE CUADRILLA</div>
+                <div class="h-type">CREDENCIAL CUADRILLA</div>
                 <div class="h-emp">${empName}</div>
               </div>
             </div>
@@ -174,11 +193,11 @@ export default function CuadrillasManager({ workersList, userEmpresa, empresasMa
                   <div class="val-big">${cuadrilla.nombre}</div>
                 </div>
                 <div>
-                  <div class="lbl">Contratista / Origen</div>
+                  <div class="lbl">Origen</div>
                   <div class="val-sub">${cuadrilla.contratista || 'MIXTO'}</div>
                 </div>
                 <div>
-                  <div class="lbl">Total Integrantes</div>
+                  <div class="lbl">Integrantes</div>
                   <div class="val-sub">${cuadrilla.trabajadores.length} PERSONAS</div>
                 </div>
               </div>
@@ -188,7 +207,7 @@ export default function CuadrillasManager({ workersList, userEmpresa, empresasMa
               </div>
             </div>
             
-            <div class="footer">CÓDIGO VÁLIDO PARA LECTURA EN APP AGRAK</div>
+            <div class="footer">CÓDIGO VÁLIDO PARA APP AGRAK</div>
           </div>
 
         </body>
@@ -202,7 +221,7 @@ export default function CuadrillasManager({ workersList, userEmpresa, empresasMa
       docFrame.open(); docFrame.write(html); docFrame.close();
       
       setTimeout(() => {
-        toast.dismiss(toastId); toast.success("Impresión de credencial enviada.");
+        toast.dismiss(toastId); toast.success("Impresión enviada.");
         printFrame.contentWindow.focus(); printFrame.contentWindow.print();
         setTimeout(() => document.body.removeChild(printFrame), 1000);
       }, 1000);
@@ -264,7 +283,6 @@ export default function CuadrillasManager({ workersList, userEmpresa, empresasMa
 
       <div style={{ display: "flex", gap: "20px", alignItems: "flex-start", flexWrap: "wrap", opacity: empresaActiva ? 1 : 0.4, pointerEvents: empresaActiva ? "auto" : "none", transition: "opacity 0.3s" }}>
         
-        {/* FORMULARIO DE CREACIÓN */}
         <div className="form-card" style={{ flex: 1, minWidth: "350px", position: "sticky", top: "20px" }}>
           <h4 style={{ marginBottom: "15px", color: "#0f172a" }}>Armar Nueva Cuadrilla</h4>
 
@@ -340,7 +358,6 @@ export default function CuadrillasManager({ workersList, userEmpresa, empresasMa
           </button>
         </div>
 
-        {/* LISTADO DE CUADRILLAS CREADAS */}
         <div className="form-card" style={{ flex: 1.5, minWidth: "350px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "15px" }}>
             <h4 style={{ margin: 0, color: "#0f172a" }}>Cuadrillas Registradas</h4>

@@ -30,7 +30,6 @@ export default function TarjasManager({ camposList, empresasMaestras }) {
   
   const [historial, setHistorial] = useState([]);
   const [inicio, setInicio] = useState(1);
-  const [ultimoCodigo, setUltimoCodigo] = useState("Cargando...");
   
   const [tarjas, setTarjas] = useState([]);
   const [procesando, setProcesando] = useState(false);
@@ -90,11 +89,9 @@ export default function TarjasManager({ camposList, empresasMaestras }) {
         let maxFin = 0;
         docs.forEach(d => { if (d.fin && typeof d.fin === 'number' && d.fin > maxFin) maxFin = d.fin; });
         setInicio(maxFin + 1);
-        if (maxFin > 0) setUltimoCodigo(`bin;${prefijo}${String(maxFin).padStart(4, '0')}`);
-        else setUltimoCodigo("Ninguno");
         setHistorial(docs.slice(0, 150));
       },
-      (error) => { console.warn("Error leyendo historial:", error.message); setUltimoCodigo("Sin acceso"); }
+      (error) => { console.warn("Error leyendo historial:", error.message); }
     );
     return () => unsubscribe();
   }, [empresaActiva, prefijo]);
@@ -262,7 +259,7 @@ export default function TarjasManager({ camposList, empresasMaestras }) {
     return html;
   };
 
-  // 🔥 FORMATO PRE-IMPRESO TORRETAGLE CALIBRADO SEGÚN FOTO 🔥
+  // 🔥 CALIBRACIÓN REAJUSTADA (SEGUNDO INTENTO) 🔥
   const getPlantillaTorretagleTarja = (tarjasAImprimir) => {
     let html = `<!DOCTYPE html>
     <html>
@@ -272,12 +269,10 @@ export default function TarjasManager({ camposList, empresasMaestras }) {
         * { box-sizing: border-box; margin: 0; padding: 0; }
         @page { size: 80mm 150mm; margin: 0; padding: 0; }
         
-        /* Modificamos el overflow para que permita sacar infinitas hojas */
         body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #000; width: 80mm; }
         
         @media print {
           html, body { width: 80mm !important; height: auto !important; margin: 0; padding: 0; overflow: visible !important; }
-          /* Aquí aseguramos que cada etiqueta mida sus 150mm y haga un corte de página */
           .label { height: 150mm !important; width: 80mm !important; page-break-after: always !important; position: relative; overflow: hidden; }
         }
         
@@ -291,29 +286,27 @@ export default function TarjasManager({ camposList, empresasMaestras }) {
           font-weight: 900; 
           text-transform: uppercase; 
           text-align: center;
-          /* Previene que textos largos desarmen la caja o salten de línea */
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
         }
         
-        /* CALIBRACIÓN EXACTA DE POSICIONES (TOP y FONT-SIZE ajustados) */
+        /* AJUSTES APLICADOS SEGÚN LA SEGUNDA FOTOGRAFÍA: */
         .box-cantidad  { top: 22mm; left: 32mm; width: 42mm; height: 12mm; font-size: 11pt; }
         
-        /* El CSG estaba sobre el texto. Lo subimos de 39.5 a 32mm */
-        .box-csg       { top: 32mm; left: 32mm; width: 42mm; height: 12mm; font-size: 11pt; }
+        /* CSG: Estaba muy abajo, lo subimos a 30mm */
+        .box-csg       { top: 30mm; left: 32mm; width: 42mm; height: 12mm; font-size: 11pt; }
         
-        /* Productor y Especie subieron 2mm para centrarse mejor en sus cajas */
-        .box-productor { top: 55mm; left: 6mm; width: 68mm; height: 14mm; font-size: 11pt; }
-        .box-especie   { top: 76mm; left: 6mm; width: 68mm; height: 14mm; font-size: 11pt; }
+        /* Productor y Especie: Estaban chocando con el techo, los bajamos 3mm */
+        .box-productor { top: 58mm; left: 6mm; width: 68mm; height: 14mm; font-size: 11pt; }
+        .box-especie   { top: 79mm; left: 6mm; width: 68mm; height: 14mm; font-size: 11pt; }
         
-        /* SDP, Cuartel, SAG y Fecha estaban demasiado arriba chocando con los títulos blancos.
-           Los empujamos hacia abajo aumentando el 'top' en 7 milímetros */
-        .box-sdp       { top: 106mm; left: 6mm; width: 32mm; height: 14mm; font-size: 10pt; }
-        .box-cuartel   { top: 106mm; left: 42mm; width: 32mm; height: 14mm; font-size: 10pt; }
+        /* SDP, Cuartel, SAG y Fecha: Estaban totalmente arriba de la caja, los bajamos. */
+        .box-sdp       { top: 109mm; left: 6mm; width: 32mm; height: 14mm; font-size: 10pt; }
+        .box-cuartel   { top: 109mm; left: 42mm; width: 32mm; height: 14mm; font-size: 10pt; }
         
-        .box-sag       { top: 127mm; left: 6mm; width: 32mm; height: 14mm; font-size: 10pt; }
-        .box-fecha     { top: 127mm; left: 42mm; width: 32mm; height: 14mm; font-size: 10pt; }
+        .box-sag       { top: 135mm; left: 6mm; width: 32mm; height: 14mm; font-size: 10pt; }
+        .box-fecha     { top: 135mm; left: 42mm; width: 32mm; height: 14mm; font-size: 10pt; }
       </style>
     </head>
     <body>`;
