@@ -42,6 +42,30 @@ export default function ContractorForm({ onSave, onCancel, initial, userEmpresa 
 
         <div className="form-group"><label>Contacto (Opcional)</label><input value={form.contacto} onChange={(e) => set("contacto", e.target.value)} placeholder="Nombre o Teléfono" /></div>
         <div className="form-group"><label>Estado</label><select value={form.estado} onChange={(e) => set("estado", e.target.value)}><option value="Activo">Activo</option><option value="Inactivo">Inactivo</option></select></div>
+
+        <div className="form-group" style={{ gridColumn: "1 / -1" }}>
+          <label
+            style={{
+              display: "flex", alignItems: "center", gap: "10px", cursor: "pointer",
+              padding: "12px 14px", background: form.asignadoCosecha ? "#dcfce7" : "#f8fafc",
+              border: `1px solid ${form.asignadoCosecha ? "#16a34a" : "#cbd5e1"}`,
+              borderRadius: "8px", transition: "all 0.15s ease",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={!!form.asignadoCosecha}
+              onChange={(e) => set("asignadoCosecha", e.target.checked)}
+              style={{ width: "18px", height: "18px", cursor: "pointer", accentColor: "#16a34a" }}
+            />
+            <span style={{ fontWeight: "600", color: "#0f172a" }}>
+              🍇 Asignado a cosecha
+              <span style={{ display: "block", fontSize: "12px", fontWeight: "400", color: "#64748b" }}>
+                Si se marca, este contratista aparecerá en la impresión de bins.
+              </span>
+            </span>
+          </label>
+        </div>
       </div>
       <div className="form-actions">
         <button className="btn-secondary" onClick={onCancel} disabled={loading}>Cancelar</button>

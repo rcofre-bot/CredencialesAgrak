@@ -45,4 +45,4 @@ export const parseDate = (dateStr) => {
 };
 
 export const EMPTY_WORKER_FORM = { rut: "", nombre: "", apellido: "", contratista: "", fechaIngreso: "", estado: "Activo", empresaRut: "" };
-export const EMPTY_CONTRACTOR_FORM = { rut: "", nombre: "", contacto: "", estado: "Activo", empresaRut: "" };
+export const EMPTY_CONTRACTOR_FORM = { rut: "", nombre: "", contacto: "", estado: "Activo", empresaRut: "", asignadoCosecha: false };

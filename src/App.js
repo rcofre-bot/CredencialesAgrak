@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, lazy, Suspense } from "react";
 import {
-  collection, addDoc, doc, updateDoc, setDoc, getDoc, query, where, serverTimestamp, writeBatch, deleteDoc, onSnapshot, orderBy, limit
+  collection, addDoc, doc, updateDoc, setDoc, getDoc, getDocs, query, where, serverTimestamp, writeBatch, deleteDoc, onSnapshot, orderBy, limit, runTransaction
 } from "firebase/firestore";
 import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
 import { db, auth, googleProvider } from "./firebase";
@@ -132,6 +132,21 @@ export default function App() {
       }, handleError));
     }
 
+    // Los Operadores no cargan la lista completa de contratistas, pero sí
+    // necesitan los asignados a cosecha para el desplegable de impresión de bins.
+    if (userRole === "Operador") {
+      let qCosecha;
+      if (userEmpresa !== "TODAS") {
+        qCosecha = query(collection(db, "contractors"), where("empresaRut", "==", userEmpresa), where("asignadoCosecha", "==", true));
+      } else {
+        qCosecha = query(collection(db, "contractors"), where("asignadoCosecha", "==", true));
+      }
+      unsubs.push(onSnapshot(qCosecha, snap => {
+        const docs = snap.docs.map(d => ({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) }));
+        setContractors(docs);
+      }, handleError));
+    }
+
     if (userRole === "Admin") {
       const qroles = query(collection(db, "userRoles"), orderBy("creadoEn", "desc"), limit(100));
       unsubs.push(onSnapshot(qroles, snap => {
@@ -255,80 +270,176 @@ const handleSaveUserRole = async (emailToSave, rolToSave, empresaRutToSave) => {
     try { await updateDoc(doc(db, "campos", id), { eliminado: true, eliminadoEn: serverTimestamp() }); toast.success("Centro ocultado"); } catch (e) { toast.error("Error: " + e.message); }
   };
 
+  // ===================================================================
+  //  ASIGNACIÓN ATÓMICA DE CREDENCIALES
+  //  Reserva una credencial disponible dentro de una transacción de
+  //  Firestore. Esto evita que dos operadores simultáneos reciban el
+  //  MISMO folio (condición de carrera). La transacción vuelve a leer
+  //  el estado en el servidor y solo asigna si sigue "Disponible".
+  //
+  //  Devuelve { codigoQR, folioQR } o lanza error si algo falla.
+  //  Si no hay credenciales precargadas para la empresa, genera un
+  //  código automático (fallback), igual que la lógica original.
+  // ===================================================================
+  const asignarCredencialAtomica = async (targetRut, rutTrabajador) => {
+    // 1. Buscamos candidatas disponibles de la empresa (fuera de la
+    //    transacción, solo para acotar; la verificación real es dentro).
+    const qDisponibles = query(
+      collection(db, "credentials"),
+      where("empresaRut", "==", targetRut),
+      where("estado", "==", "Disponible")
+    );
+    const snap = await getDocs(qDisponibles);
+    const candidatas = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(c => !c.eliminado)
+      .sort((a, b) => String(a.folio).localeCompare(String(b.folio), undefined, { numeric: true, sensitivity: "base" }));
+
+    // 2. Intentamos reservar la primera que siga libre en el servidor.
+    for (const cand of candidatas) {
+      try {
+        const asignada = await runTransaction(db, async (tx) => {
+          const ref = doc(db, "credentials", cand.id);
+          const fresh = await tx.get(ref);
+          if (!fresh.exists()) return null;
+          const data = fresh.data();
+          // Verificación atómica: ¿sigue disponible?
+          if (data.estado !== "Disponible" || data.eliminado) return null;
+          tx.update(ref, { estado: "Asignado", asignadoA: rutTrabajador, actualizadoEn: serverTimestamp() });
+          return { codigoQR: data.codigo, folioQR: data.folio };
+        });
+        if (asignada) return asignada; // reserva exitosa
+        // si fue null, otro se la llevó: probamos la siguiente
+      } catch (e) {
+        console.error("Reintentando asignación de credencial:", e);
+        // conflicto de transacción: probamos la siguiente candidata
+      }
+    }
+
+    // 3. Fallback: no había credenciales precargadas disponibles.
+    return {
+      codigoQR: generateWorkerCode(),
+      folioQR: "V-AUTO-" + Math.floor(Math.random() * 10000),
+    };
+  };
+
+  // Libera la credencial de un trabajador (al desactivar / eliminar).
+  const liberarCredencial = async (codigoQR, folioQR, targetRut) => {
+    if (!codigoQR) return;
+    const credDoc = credentials.find(c => c.codigo === codigoQR && c.empresaRut === targetRut);
+    if (credDoc) {
+      await updateDoc(doc(db, "credentials", credDoc.id), { estado: "Disponible", asignadoA: null, actualizadoEn: serverTimestamp() });
+    } else {
+      // La credencial no existe en catálogo: la recreamos como disponible.
+      await addDoc(collection(db, "credentials"), {
+        folio: folioQR || "RECICLADO-" + Math.floor(Math.random() * 1000),
+        codigo: codigoQR, empresaRut: targetRut, estado: "Disponible",
+        asignadoA: null, creadoEn: serverTimestamp(), eliminado: false,
+      });
+    }
+  };
+
   const handleSaveWorker = async (form) => {
     const rutExiste = workers.some(w => w.rut === form.rut && (!editTarget || w.id !== editTarget.id));
     if (rutExiste) throw new Error("RUT ya registrado.");
     let finalForm = { ...form, empresaRut: userEmpresa !== "TODAS" ? userEmpresa : form.empresaRut };
     const targetRut = finalForm.empresaRut;
-    
-    if (!editTarget) {
-      const availableCredentials = credentials.filter(c => c.estado === "Disponible" && c.empresaRut === targetRut).sort((a, b) => String(a.folio).localeCompare(String(b.folio), undefined, { numeric: true, sensitivity: 'base' }));
-      if (availableCredentials.length > 0) {
-        const nextCred = availableCredentials[0]; finalForm.codigoQR = nextCred.codigo; finalForm.folioQR = nextCred.folio;
-        updateDoc(doc(db, "credentials", nextCred.id), { estado: "Asignado", asignadoA: form.rut, actualizadoEn: serverTimestamp() }).catch(console.error);
-      } else { 
-        finalForm.codigoQR = generateWorkerCode(); 
-        finalForm.folioQR = "V-AUTO-" + Math.floor(Math.random() * 10000); 
-      }
-      addDoc(collection(db, "workers"), { ...finalForm, creadoEn: serverTimestamp() }).catch(console.error); 
-      toast.success("Trabajador registrado localmente.");
-    } else {
-      if (form.estado === "Inactivo" && editTarget.codigoQR) {
-        const credDoc = credentials.find(c => c.codigo === editTarget.codigoQR && c.empresaRut === targetRut);
-        if (credDoc) { updateDoc(doc(db, "credentials", credDoc.id), { estado: "Disponible", asignadoA: null, actualizadoEn: serverTimestamp() }).catch(console.error); } 
-        else { addDoc(collection(db, "credentials"), { folio: editTarget.folioQR || "RECICLADO-" + Math.floor(Math.random() * 1000), codigo: editTarget.codigoQR, empresaRut: targetRut, estado: "Disponible", asignadoA: null, creadoEn: serverTimestamp(), eliminado: false }).catch(console.error); }
-        finalForm.codigoQR = null; finalForm.folioQR = null;
-      } else if (form.estado === "Activo" && editTarget.estado === "Inactivo" && !editTarget.codigoQR) {
-        const today = new Date(); finalForm.fechaIngreso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-        const availableCredentials = credentials.filter(c => c.estado === "Disponible" && c.empresaRut === targetRut).sort((a, b) => String(a.folio).localeCompare(String(b.folio), undefined, { numeric: true, sensitivity: 'base' }));
-        if (availableCredentials.length > 0) {
-          const nextCred = availableCredentials[0]; finalForm.codigoQR = nextCred.codigo; finalForm.folioQR = nextCred.folio;
-          updateDoc(doc(db, "credentials", nextCred.id), { estado: "Asignado", asignadoA: form.rut, actualizadoEn: serverTimestamp() }).catch(console.error);
-        } else { 
-          finalForm.codigoQR = generateWorkerCode(); 
-          finalForm.folioQR = "V-AUTO-" + Math.floor(Math.random() * 10000); 
+
+    try {
+      if (!editTarget) {
+        // --- Registro nuevo: asignación atómica de credencial ---
+        const cred = await asignarCredencialAtomica(targetRut, form.rut);
+        finalForm.codigoQR = cred.codigoQR;
+        finalForm.folioQR = cred.folioQR;
+        await addDoc(collection(db, "workers"), { ...finalForm, creadoEn: serverTimestamp() });
+        toast.success("Trabajador registrado.");
+      } else {
+        // --- Edición ---
+        if (form.estado === "Inactivo" && editTarget.codigoQR) {
+          // Desactivación: liberamos la credencial.
+          await liberarCredencial(editTarget.codigoQR, editTarget.folioQR, targetRut);
+          finalForm.codigoQR = null;
+          finalForm.folioQR = null;
+        } else if (form.estado === "Activo" && editTarget.estado === "Inactivo" && !editTarget.codigoQR) {
+          // Reactivación sin credencial: asignamos una nueva atómicamente.
+          const today = new Date();
+          finalForm.fechaIngreso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+          const cred = await asignarCredencialAtomica(targetRut, form.rut);
+          finalForm.codigoQR = cred.codigoQR;
+          finalForm.folioQR = cred.folioQR;
         }
+        await updateDoc(doc(db, "workers", editTarget.id), { ...finalForm, actualizadoEn: serverTimestamp() });
+        toast.success("Ficha actualizada.");
       }
-      updateDoc(doc(db, "workers", editTarget.id), { ...finalForm, actualizadoEn: serverTimestamp() }).catch(console.error); 
-      toast.success("Ficha actualizada localmente.");
+      setView("workers_list");
+      setEditTarget(null);
+    } catch (error) {
+      console.error("Error al guardar trabajador:", error);
+      toast.error("No se pudo guardar: " + error.message);
+      throw error; // el formulario puede reaccionar al fallo
     }
-    setView("workers_list"); setEditTarget(null);
   };
 
   const handleSaveContractor = async (form) => {
     let finalForm = { ...form, empresaRut: userEmpresa !== "TODAS" ? userEmpresa : form.empresaRut };
-    if (editTarget) { updateDoc(doc(db, "contractors", editTarget.id), { ...finalForm, actualizadoEn: serverTimestamp() }).catch(console.error); toast.success("Contratista actualizado.");
-    } else { addDoc(collection(db, "contractors"), { ...finalForm, creadoEn: serverTimestamp() }).catch(console.error); toast.success("Contratista registrado."); }
-    setView("contractors_list"); setEditTarget(null);
+    try {
+      if (editTarget) {
+        await updateDoc(doc(db, "contractors", editTarget.id), { ...finalForm, actualizadoEn: serverTimestamp() });
+        toast.success("Contratista actualizado.");
+      } else {
+        await addDoc(collection(db, "contractors"), { ...finalForm, creadoEn: serverTimestamp() });
+        toast.success("Contratista registrado.");
+      }
+      setView("contractors_list");
+      setEditTarget(null);
+    } catch (error) {
+      console.error("Error al guardar contratista:", error);
+      toast.error("No se pudo guardar el contratista: " + error.message);
+    }
+  };
+
+  const handleToggleCosecha = async (item) => {
+    try {
+      await updateDoc(doc(db, "contractors", item.id), {
+        asignadoCosecha: !item.asignadoCosecha,
+        actualizadoEn: serverTimestamp(),
+      });
+      toast.success(item.asignadoCosecha ? "Contratista quitado de cosecha." : "Contratista asignado a cosecha.");
+    } catch (e) {
+      console.error("Error al cambiar asignación de cosecha:", e);
+      toast.error("No se pudo actualizar: " + e.message);
+    }
   };
 
   const handleToggleEstado = async (item, collectionName) => {
     const nuevoEstado = item.estado === "Activo" ? "Inactivo" : "Activo";
-    if (collectionName === "workers") {
-      const targetRut = item.empresaRut || userEmpresa;
-      if (nuevoEstado === "Activo") {
-        if (!window.confirm(`¿Seguro que deseas Reactivar a ${item.nombre}? Su fecha de ingreso se actualizará a hoy.`)) return;
-        const today = new Date(); const fechaHoy = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-        let updates = { estado: nuevoEstado, fechaIngreso: fechaHoy, actualizadoEn: serverTimestamp() };
-        if (!item.codigoQR) {
-          const availableCredentials = credentials.filter(c => c.estado === "Disponible" && c.empresaRut === targetRut).sort((a, b) => String(a.folio).localeCompare(String(b.folio), undefined, { numeric: true, sensitivity: 'base' }));
-          if (availableCredentials.length > 0) {
-            const nextCred = availableCredentials[0]; updates.codigoQR = nextCred.codigo; updates.folioQR = nextCred.folio;
-            updateDoc(doc(db, "credentials", nextCred.id), { estado: "Asignado", asignadoA: item.rut, actualizadoEn: serverTimestamp() }).catch(console.error);
-          } else { updates.codigoQR = generateWorkerCode(); updates.folioQR = "V-AUTO-" + Math.floor(Math.random() * 10000); }
+    try {
+      if (collectionName === "workers") {
+        const targetRut = item.empresaRut || userEmpresa;
+        if (nuevoEstado === "Activo") {
+          if (!window.confirm(`¿Seguro que deseas Reactivar a ${item.nombre}? Su fecha de ingreso se actualizará a hoy.`)) return;
+          const today = new Date();
+          const fechaHoy = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+          let updates = { estado: nuevoEstado, fechaIngreso: fechaHoy, actualizadoEn: serverTimestamp() };
+          if (!item.codigoQR) {
+            const cred = await asignarCredencialAtomica(targetRut, item.rut);
+            updates.codigoQR = cred.codigoQR;
+            updates.folioQR = cred.folioQR;
+          }
+          await updateDoc(doc(db, collectionName, item.id), updates);
+        } else {
+          if (!window.confirm(`¿Seguro que deseas Desactivar a ${item.nombre}? Su credencial quedará libre para su empresa.`)) return;
+          await liberarCredencial(item.codigoQR, item.folioQR, targetRut);
+          await updateDoc(doc(db, collectionName, item.id), { estado: nuevoEstado, codigoQR: null, folioQR: null, actualizadoEn: serverTimestamp() });
         }
-        updateDoc(doc(db, collectionName, item.id), updates).catch(console.error);
       } else {
-        if (!window.confirm(`¿Seguro que deseas Desactivar a ${item.nombre}? Su credencial quedará libre para su empresa.`)) return;
-        if (item.codigoQR) {
-          const credDoc = credentials.find(c => c.codigo === item.codigoQR && c.empresaRut === targetRut);
-          if (credDoc) { updateDoc(doc(db, "credentials", credDoc.id), { estado: "Disponible", asignadoA: null, actualizadoEn: serverTimestamp() }).catch(console.error); } 
-          else { addDoc(collection(db, "credentials"), { folio: item.folioQR || "RECICLADO-" + Math.floor(Math.random() * 1000), codigo: item.codigoQR, empresaRut: targetRut, estado: "Disponible", asignadoA: null, creadoEn: serverTimestamp(), eliminado: false }).catch(console.error); }
-        }
-        updateDoc(doc(db, collectionName, item.id), { estado: nuevoEstado, codigoQR: null, folioQR: null, actualizadoEn: serverTimestamp() }).catch(console.error);
+        await updateDoc(doc(db, collectionName, item.id), { estado: nuevoEstado, actualizadoEn: serverTimestamp() });
       }
-    } else { updateDoc(doc(db, collectionName, item.id), { estado: nuevoEstado, actualizadoEn: serverTimestamp() }).catch(console.error); }
-    toast.success("Estado actualizado localmente");
+      toast.success("Estado actualizado.");
+    } catch (error) {
+      console.error("Error al cambiar estado:", error);
+      toast.error("No se pudo actualizar el estado: " + error.message);
+    }
   };
 
   const handleDeleteRecord = async (item, collectionName) => {
@@ -336,12 +447,14 @@ const handleSaveUserRole = async (emailToSave, rolToSave, empresaRutToSave) => {
     try {
       if (collectionName === "workers" && item.codigoQR) {
         const targetRut = item.empresaRut || userEmpresa;
-        const credDoc = credentials.find(c => c.codigo === item.codigoQR && c.empresaRut === targetRut);
-        if (credDoc) { updateDoc(doc(db, "credentials", credDoc.id), { estado: "Disponible", asignadoA: null, actualizadoEn: serverTimestamp() }).catch(console.error); } 
-        else { addDoc(collection(db, "credentials"), { folio: item.folioQR || "RECICLADO-" + Math.floor(Math.random() * 1000), codigo: item.codigoQR, empresaRut: targetRut, estado: "Disponible", asignadoA: null, creadoEn: serverTimestamp(), eliminado: false }).catch(console.error); }
+        await liberarCredencial(item.codigoQR, item.folioQR, targetRut);
       }
-      deleteDoc(doc(db, collectionName, item.id)).catch(console.error); toast.success("Registro eliminado");
-    } catch (e) { toast.error("Error al eliminar: " + e.message); }
+      await deleteDoc(doc(db, collectionName, item.id));
+      toast.success("Registro eliminado");
+    } catch (e) {
+      console.error("Error al eliminar:", e);
+      toast.error("Error al eliminar: " + e.message);
+    }
   };
 
   const isWorkerView = view.includes("workers");
@@ -485,7 +598,7 @@ const handleSaveUserRole = async (emailToSave, rolToSave, empresaRutToSave) => {
           {view === "workers_form" && <WorkerForm onSave={handleSaveWorker} onCancel={() => setView("workers_list")} initial={editTarget} contractorsList={contractors} credentialsList={credentials} userEmpresa={userEmpresa} />}
           {view === "contractors_form" && <ContractorForm onSave={handleSaveContractor} onCancel={() => setView("contractors_list")} initial={editTarget} userEmpresa={userEmpresa} />}
           {view === "contractors_bulk" && userRole === "Admin" && userEmpresa === "TODAS" && <ContractorsBulkManager onBulkUpload={handleBulkUploadContractors} onCancel={() => setView("contractors_list")} loading={loadingData} />}
-          {view === "tarjas" && <TarjasManager camposList={camposList} empresasMaestras={empresasDisponiblesPanel} />}
+          {view === "tarjas" && <TarjasManager camposList={camposList} empresasMaestras={empresasDisponiblesPanel} contractorsList={contractors} userRole={userRole} />}
           
           {view === "campos" && userRole === "Admin" && <CamposManager camposList={camposList} onSave={handleSaveCampo} onBulkUpload={handleBulkUploadCampos} onDelete={handleDeleteCampo} loading={loadingData} empresasMaestras={empresasDisponiblesPanel} userEmpresa={userEmpresa} />}
           
@@ -574,6 +687,20 @@ const handleSaveUserRole = async (emailToSave, rolToSave, empresaRutToSave) => {
                           
                           {isWorkerView && item.codigoQR && item.estado === "Activo" && (
                             <button className="btn-action" title="Ver QR" onClick={() => setQrWorker(item)}>QR</button>
+                          )}
+
+                          {!isWorkerView && (
+                            <button
+                              className="btn-action"
+                              title={item.asignadoCosecha ? "Quitar de cosecha" : "Asignar a cosecha"}
+                              onClick={() => handleToggleCosecha(item)}
+                              style={{
+                                background: item.asignadoCosecha ? "#dcfce7" : "transparent",
+                                borderColor: item.asignadoCosecha ? "#16a34a" : undefined,
+                              }}
+                            >
+                              🍇
+                            </button>
                           )}
 
                           <button className="btn-action" title="Editar" onClick={() => { setEditTarget(item); setView(isWorkerView ? "workers_form" : "contractors_form"); }}>✏️</button>

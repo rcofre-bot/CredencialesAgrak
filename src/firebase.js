@@ -1,61 +1,55 @@
 // src/firebase.js
-// =====================================================
-//  CONFIGURACIÓN FIREBASE
-//  Reemplaza estos valores con los de tu proyecto Firebase
-//  Ve a: https://console.firebase.google.com
-//  → Nuevo proyecto → Agrega app web → Copia la config
-// =====================================================
-
-// import { initializeApp } from "firebase/app";
-// import { getFirestore } from "firebase/firestore";
-// import { getAuth, GoogleAuthProvider } from "firebase/auth";
-// import { getStorage } from "firebase/storage";
-
-// const firebaseConfig = {
-//  apiKey: "AIzaSyD0u_0c0yKTnLarvpdar0ruIZ_-X_khWUs",
-//  authDomain: "credencialesagrak.firebaseapp.com",
-//  projectId: "credencialesagrak",
-//  storageBucket: "credencialesagrak.firebasestorage.app",
-//  messagingSenderId: "1015802774112",
-//  appId: "1:1015802774112:web:80cc18c423cea86b26f905"
-// };
-
-// const app = initializeApp(firebaseConfig);
-
-// export const db = getFirestore(app);
-// export const auth = getAuth(app);
-// export const storage = getStorage(app);
-// export const googleProvider = new GoogleAuthProvider();
-
-// export default app;
+// =====================================================================
+//  CONFIGURACIÓN FIREBASE (web)
+// =====================================================================
+//  La configuración se lee desde variables de entorno (.env) para no
+//  dejar credenciales escritas directamente en el código fuente.
+//
+//  1. Copia .env.example como .env y rellena los valores.
+//  2. En Create React App las variables deben empezar por REACT_APP_.
+//
+//  Nota de seguridad: la apiKey de Firebase web NO es un secreto (viaja
+//  al navegador de todas formas). La seguridad real la imponen las
+//  reglas de Firestore (ver firestore.rules).
+// =====================================================================
 
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
-// 🔥 Importamos la forma MODERNA de activar el caché en la versión 10+ de Firebase
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
+import {
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+} from "firebase/firestore";
 
-// ⚠️ MANTÉN TUS PROPIAS CREDENCIALES AQUÍ ⚠️
 const firebaseConfig = {
-  apiKey: "AIzaSyD0u_0c0yKTnLarvpdar0ruIZ_-X_khWUs",
-  authDomain: "credencialesagrak.firebaseapp.com",
-  projectId: "credencialesagrak",
-  storageBucket: "credencialesagrak.firebasestorage.app",
-  messagingSenderId: "1015802774112",
-  appId: "1:1015802774112:web:80cc18c423cea86b26f905"
- };
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
+  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.REACT_APP_FIREBASE_APP_ID,
+};
+
+// Aviso temprano si falta configuración (evita errores confusos en runtime)
+if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
+  console.error(
+    "⚠️ Falta configuración de Firebase. Revisa tu archivo .env " +
+      "(usa .env.example como plantilla) y reinicia el servidor de desarrollo."
+  );
+}
 
 // 1. Inicializamos la app
 const app = initializeApp(firebaseConfig);
 
-// 2. Inicializamos Autenticación
+// 2. Autenticación con Google
 const auth = getAuth(app);
 const googleProvider = new GoogleAuthProvider();
 
-// 3. 🔥 Inicializamos Firestore con el Modo Offline Moderno (Soporta múltiples pestañas)
+// 3. Firestore con caché offline moderno (soporta múltiples pestañas)
 const db = initializeFirestore(app, {
   localCache: persistentLocalCache({
-    tabManager: persistentMultipleTabManager()
-  })
+    tabManager: persistentMultipleTabManager(),
+  }),
 });
 
 export { db, auth, googleProvider };

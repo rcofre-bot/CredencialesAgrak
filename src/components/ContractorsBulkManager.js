@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import toast from "react-hot-toast";
-import { EMPRESAS_MAESTRAS, formatRut } from "../utils/helpers";
+import { EMPRESAS_MAESTRAS, formatRut, validateRut } from "../utils/helpers";
 
 export default function ContractorsBulkManager({ onBulkUpload, loading, onCancel }) {
   const [bulkText, setBulkText] = useState("");
@@ -11,6 +11,7 @@ export default function ContractorsBulkManager({ onBulkUpload, loading, onCancel
     if (!bulkText.trim()) return;
     const lines = bulkText.split("\n").map(l => l.trim()).filter(l => l !== "");
     const newItems = [];
+    const invalidos = [];
 
     for (let line of lines) {
       const parts = line.split(/[,\t]/).map(p => p.trim());
@@ -19,9 +20,18 @@ export default function ContractorsBulkManager({ onBulkUpload, loading, onCancel
         let nombre = parts[1];
         let contacto = parts[2] || "";
         if (rut && nombre) {
-          newItems.push({ rut, nombre, contacto, empresaRut: empresaDestino, estado: "Active" ? "Activo" : "Activo" });
+          // Validamos el dígito verificador del RUT antes de aceptarlo
+          if (!validateRut(rut)) {
+            invalidos.push(`${parts[0]} (RUT inválido)`);
+            continue;
+          }
+          newItems.push({ rut, nombre, contacto, empresaRut: empresaDestino, estado: "Activo" });
         }
       }
+    }
+
+    if (invalidos.length > 0) {
+      toast.error(`Se omitieron ${invalidos.length} registro(s) con RUT inválido.`);
     }
 
     if (newItems.length === 0) {

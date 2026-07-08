@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import toast from "react-hot-toast";
-import { EMPRESAS_MAESTRAS, formatRut } from "../utils/helpers"; // 🔥 IMPORTACIÓN CORREGIDA
+import { EMPRESAS_MAESTRAS, formatRut, validateRut } from "../utils/helpers"; // 🔥 IMPORTACIÓN CORREGIDA
 
 // 🔥 PEGA AQUÍ TU LISTADO DE CARGOS 🔥
 const LISTA_CARGOS = [
@@ -56,6 +56,7 @@ export default function WorkerForm({ onSave, onCancel, initial, contractorsList,
     const rutLimpio = form.rut.replace(/[^0-9kK]/g, '').toUpperCase();
     
     if (!rutLimpio || rutLimpio.length < 7) { toast.error("RUT inválido"); return; }
+    if (!validateRut(rutLimpio)) { toast.error("El RUT no es válido (dígito verificador incorrecto)."); return; }
     if (!form.nombre.trim() || !form.apellido.trim()) { toast.error("Nombre y Apellidos son obligatorios"); return; }
     if (userEmpresa === "TODAS" && !form.empresaRut) { toast.error("Selecciona la Empresa Asignada"); return; }
 

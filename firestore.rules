@@ -1,0 +1,187 @@
+rules_version = '2';
+
+// =====================================================================
+//  REGLAS DE SEGURIDAD FIRESTORE - AgroTrack / CredencialesAgrak
+// =====================================================================
+//  La seguridad REAL vive aquí, en el servidor. El frontend (React /
+//  Expo) solo controla lo que se MUESTRA; estas reglas controlan lo
+//  que realmente se puede LEER y ESCRIBIR.
+//
+//  Modelo de acceso:
+//   - Cada usuario autorizado tiene un documento en /userRoles/{email}
+//     con { rol: "Admin"|"Supervisor"|"Operador", empresaRut: "..."|"TODAS" }
+//   - Admin con empresaRut="TODAS"  => acceso global (super admin)
+//   - Los demás => acceso restringido a los documentos de SU empresaRut
+//
+//  Para desplegar:
+//   firebase deploy --only firestore:rules
+//  o pega el contenido en: Firebase Console > Firestore > Reglas
+// =====================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- Funciones auxiliares ----------
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Email del usuario en minúsculas (así se guardan las claves de userRoles)
+    function userEmail() {
+      return request.auth.token.email.lower();
+    }
+
+    // ¿Existe el documento de rol para este usuario?
+    function hasRole() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/userRoles/$(userEmail()));
+    }
+
+    // Datos del rol del usuario (rol, empresaRut)
+    function roleData() {
+      return get(/databases/$(database)/documents/userRoles/$(userEmail())).data;
+    }
+
+    function myRole() {
+      return roleData().rol;
+    }
+
+    function myEmpresa() {
+      // Si no viene empresaRut, se asume acceso global (compatibilidad)
+      return roleData().get('empresaRut', 'TODAS');
+    }
+
+    function isAdmin() {
+      return hasRole() && myRole() == 'Admin';
+    }
+
+    // Admin global = Admin con acceso a TODAS las empresas (super admin)
+    function isGlobalAdmin() {
+      return isAdmin() && myEmpresa() == 'TODAS';
+    }
+
+    function isSupervisor() {
+      return hasRole() && myRole() == 'Supervisor';
+    }
+
+    function isOperador() {
+      return hasRole() && myRole() == 'Operador';
+    }
+
+    // ¿Puede el usuario tocar documentos de esta empresa?
+    // - Acceso global => cualquier empresa
+    // - Acceso acotado => solo la suya
+    function canAccessEmpresa(empresaRut) {
+      return myEmpresa() == 'TODAS' || myEmpresa() == empresaRut;
+    }
+
+    // El documento (nuevo o existente) pertenece a una empresa que el
+    // usuario puede tocar. Vale tanto para lectura como para escritura.
+    function docInMyScope(data) {
+      return canAccessEmpresa(data.empresaRut);
+    }
+
+    // ---------- userRoles: solo Admin gestiona accesos ----------
+    // Un usuario SIEMPRE puede leer su propio rol (lo necesita el login).
+    // Solo un Admin puede crear/editar/borrar roles.
+    match /userRoles/{email} {
+      allow get: if isSignedIn() && (email == userEmail() || isAdmin());
+      allow list: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // ---------- Colecciones de negocio con campo empresaRut ----------
+    // workers, contractors, credentials, campos, cuadrillas, tarjas, tarjas_history
+    //
+    //  read   : cualquier usuario con rol, limitado a su empresa
+    //  create : el documento nuevo debe caer dentro de su empresa
+    //  update : tanto el documento actual como el resultante deben estar
+    //           dentro de su empresa (evita "sacar" o "meter" registros
+    //           a otra empresa cambiando empresaRut)
+    //  delete : solo Admin (los demás usan borrado lógico / campo eliminado)
+
+    function canReadEmpresaDoc() {
+      return hasRole() && docInMyScope(resource.data);
+    }
+
+    function canCreateEmpresaDoc() {
+      return hasRole() && docInMyScope(request.resource.data);
+    }
+
+    function canUpdateEmpresaDoc() {
+      return hasRole()
+        && docInMyScope(resource.data)
+        && docInMyScope(request.resource.data);
+    }
+
+    match /workers/{id} {
+      allow read:   if canReadEmpresaDoc();
+      allow create: if canCreateEmpresaDoc();
+      allow update: if canUpdateEmpresaDoc();
+      allow delete: if isAdmin() && docInMyScope(resource.data);
+    }
+
+    match /contractors/{id} {
+      allow read:   if canReadEmpresaDoc();
+      allow create: if canCreateEmpresaDoc();
+      allow update: if canUpdateEmpresaDoc();
+      allow delete: if isAdmin() && docInMyScope(resource.data);
+    }
+
+    match /credentials/{id} {
+      allow read:   if canReadEmpresaDoc();
+      allow create: if canCreateEmpresaDoc();
+      allow update: if canUpdateEmpresaDoc();
+      allow delete: if isAdmin() && docInMyScope(resource.data);
+    }
+
+    match /campos/{id} {
+      allow read:   if canReadEmpresaDoc();
+      // Alta / edición de campos: solo Admin (así lo hace la UI actual)
+      allow create: if isAdmin() && docInMyScope(request.resource.data);
+      allow update: if isAdmin() && docInMyScope(resource.data)
+                                 && docInMyScope(request.resource.data);
+      allow delete: if isAdmin() && docInMyScope(resource.data);
+    }
+
+    match /cuadrillas/{id} {
+      allow read:   if canReadEmpresaDoc();
+      allow create: if canCreateEmpresaDoc();
+      allow update: if canUpdateEmpresaDoc();
+      allow delete: if isAdmin() && docInMyScope(resource.data);
+    }
+
+    // Tarjas: la app móvil (Operador) las crea. Cualquier rol con acceso
+    // a la empresa puede leerlas/crearlas. Editar/borrar solo Admin.
+    match /tarjas/{id} {
+      allow read:   if canReadEmpresaDoc();
+      allow create: if canCreateEmpresaDoc();
+      allow update: if isAdmin() && docInMyScope(resource.data)
+                                 && docInMyScope(request.resource.data);
+      allow delete: if isAdmin() && docInMyScope(resource.data);
+    }
+
+    match /tarjas_history/{id} {
+      allow read:   if canReadEmpresaDoc();
+      allow create: if canCreateEmpresaDoc();
+      allow update: if isAdmin() && docInMyScope(resource.data)
+                                 && docInMyScope(request.resource.data);
+      allow delete: if isAdmin() && docInMyScope(resource.data);
+    }
+
+    // ---------- mail: cola de la extensión Trigger Email ----------
+    // Solo Admin puede encolar correos (invitaciones de acceso).
+    // Nadie los lee desde el cliente; los procesa la extensión.
+    match /mail/{id} {
+      allow create: if isAdmin();
+      allow read, update, delete: if false;
+    }
+
+    // ---------- Bloqueo por defecto ----------
+    // Cualquier ruta no contemplada arriba queda denegada.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

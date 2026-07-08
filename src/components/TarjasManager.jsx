@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { collection, query, onSnapshot, addDoc, serverTimestamp, where } from "firebase/firestore";
+import { collection, query, onSnapshot, addDoc, serverTimestamp, where, deleteDoc, doc } from "firebase/firestore";
 import { db } from "../firebase"; 
 import QRCode from "qrcode";
 import toast from "react-hot-toast";
@@ -9,12 +9,14 @@ const LOGOS_EMPRESAS = {
   "76.064.746-2": "/torretagle.png"
 };
 
-export default function TarjasManager({ camposList, empresasMaestras }) {
+export default function TarjasManager({ camposList, empresasMaestras, contractorsList = [], userRole }) {
   const [empresaIdx, setEmpresaIdx] = useState(0);
   
   const [modoTorretagle, setModoTorretagle] = useState("bins");
 
   const [fecha, setFecha] = useState(new Date().toISOString().split("T")[0]);
+
+  const [contratistaCosecha, setContratistaCosecha] = useState("");
   
   const [campoSeleccionado, setCampoSeleccionado] = useState("");
   const [centroSeleccionado, setCentroSeleccionado] = useState("");
@@ -38,6 +40,11 @@ export default function TarjasManager({ camposList, empresasMaestras }) {
   const empresaActiva = empresasMaestras[empresaIdx] || empresasMaestras[0];
   const prefijo = empresaActiva?.prefijo || "";
   const isTorretagle = empresaActiva?.rut === "76.064.746-2";
+
+  // Contratistas marcados como "asignado a cosecha" de la empresa activa
+  const contratistasCosecha = (contractorsList || []).filter(
+    c => c.asignadoCosecha && c.estado === "Activo" && c.empresaRut === empresaActiva?.rut
+  );
   
   const listaCamposFiltrados = camposList.filter(c => {
     if (!c.empresaRut) return empresaActiva.rut === "79.737.880-1"; 
@@ -154,7 +161,8 @@ export default function TarjasManager({ camposList, empresasMaestras }) {
               codigo: codigoQRData, qrUrl: qrDataUrl, fechaStr, 
               empresaNombre: empresaActiva.nombre.replace("AGRICOLA ", "").replace(" SPA", ""),
               logoUrl: logoBase, campo: campoSeleccionado, centroCosto: centroCostoImpresion, 
-              especie: especieAuto, variedad: variedadAuto, sdp, clasificacionSag, corte: corteFinalStr 
+              especie: especieAuto, variedad: variedadAuto, sdp, clasificacionSag, corte: corteFinalStr,
+              contratista: contratistaCosecha 
             }));
           batchPromises.push(qrPromise);
         }
@@ -167,7 +175,8 @@ export default function TarjasManager({ camposList, empresasMaestras }) {
         nuevasTarjas.push({
           id: i, fechaStr, empresaNombre: empresaActiva.nombre.replace(" SPA", ""), logoUrl: logoBase,
           campo: campoSeleccionado, centroCosto: centroCostoImpresion, especie: especieAuto,
-          variedad: variedadAuto, sdp, clasificacionSag, corte: corteFinalStr, codCsg 
+          variedad: variedadAuto, sdp, clasificacionSag, corte: corteFinalStr, codCsg,
+          contratista: contratistaCosecha 
         });
       }
     }
@@ -228,19 +237,20 @@ export default function TarjasManager({ camposList, empresasMaestras }) {
         }
         
         .label { 
-          width: 100mm; height: 70mm; padding: 3mm 4mm; 
+          width: 100mm; height: 70mm; padding: 2.5mm 4mm; 
           display: flex; flex-direction: column; align-items: center; justify-content: space-between; 
           border: 1px dashed #ccc; background-color: #fff;
         }
         
         .header { width: 100%; text-align: center; }
-        .bin-empresa { font-size: 16pt; font-weight: 900; text-transform: uppercase; line-height: 1.1; margin-bottom: 1mm; }
-        .bin-cuartel { font-size: 12pt; font-weight: bold; color: #222; text-transform: uppercase; line-height: 1.1; }
+        .bin-empresa { font-size: 13pt; font-weight: 900; text-transform: uppercase; line-height: 1.1; margin-bottom: 0.5mm; }
+        .bin-cuartel { font-size: 10pt; font-weight: bold; color: #222; text-transform: uppercase; line-height: 1.1; }
+        .bin-contratista { font-size: 10pt; font-weight: bold; color: #222; text-transform: uppercase; line-height: 1.1; margin-top: 0.3mm; }
         
-        .qr-wrapper { flex-grow: 1; display: flex; align-items: center; justify-content: center; width: 100%; }
-        .bin-qr { width: 42mm; height: 42mm; object-fit: contain; }
+        .qr-wrapper { flex-grow: 1; display: flex; align-items: center; justify-content: center; width: 100%; min-height: 0; }
+        .bin-qr { width: 38mm; height: 38mm; object-fit: contain; }
         
-        .bin-text { font-size: 26pt; font-weight: 900; letter-spacing: 1.5px; line-height: 1; margin-top: 1mm; text-align: center; }
+        .bin-text { font-size: 22pt; font-weight: 900; letter-spacing: 1.5px; line-height: 1; margin-top: 0.5mm; text-align: center; }
       </style>
     </head>
     <body>`;
@@ -250,6 +260,8 @@ export default function TarjasManager({ camposList, empresasMaestras }) {
           <div class="header">
             <div class="bin-empresa">${t.empresaNombre} (R)</div>
             <div class="bin-cuartel">CUARTEL: ${t.centroCosto}</div>
+            ${t.contratista ? `<div class="bin-contratista">CONTRATISTA: ${t.contratista}</div>` : ''}
+            <div class="bin-contratista">FECHA: ${t.fechaStr}</div>
           </div>
           <div class="qr-wrapper"><img class="bin-qr" src="${t.qrUrl}" alt="QR" /></div>
           <div class="bin-text">${t.codigo}</div>
@@ -360,6 +372,7 @@ export default function TarjasManager({ camposList, empresasMaestras }) {
       fechaCosecha: fecha,
       codCsg: codCsg.toUpperCase(),
       prefijo: prefijo,
+      contratista: contratistaCosecha || "",
       inicio: esSecuencial ? inicio : null, 
       cantidad: cantNum,
       fin: esSecuencial ? numFin : null, 
@@ -395,6 +408,26 @@ export default function TarjasManager({ camposList, empresasMaestras }) {
     }, 1500); 
   };
 
+  const eliminarLote = async (lote) => {
+    // Doble validación: solo Admin puede eliminar (además de las reglas de Firestore).
+    if (userRole !== "Admin") {
+      toast.error("Solo un administrador puede eliminar lotes.");
+      return;
+    }
+    const rango = lote.inicio ? `${lote.inicio} al ${lote.fin}` : `${lote.cantidad} copias`;
+    if (!window.confirm(
+      `⚠️ ELIMINAR del historial el lote de ${rango}.\n\n` +
+      `Esto solo borra el registro de auditoría; NO afecta las etiquetas ya impresas.\n\n¿Continuar?`
+    )) return;
+    try {
+      await deleteDoc(doc(db, "tarjas_history", lote.id));
+      toast.success("Lote eliminado del historial.");
+    } catch (e) {
+      console.error("Error al eliminar lote:", e);
+      toast.error("No se pudo eliminar el lote: " + e.message);
+    }
+  };
+
   const reimprimirLote = async (lote) => {
     const msg = lote.inicio 
       ? `⚠️ REIMPRIMIR lote secuencial desde ${lote.inicio} hasta ${lote.fin}. ¿Continuar?`
@@ -420,7 +453,8 @@ export default function TarjasManager({ camposList, empresasMaestras }) {
             empresaNombre: lote.empresa.replace("AGRICOLA ", "").replace(" SPA", ""),
             logoUrl: logoBase, campo: lote.campo, centroCosto: lote.centroCosto, 
             especie: lote.especie || "", variedad: lote.variedad || "",
-            sdp: lote.sdp || "", clasificacionSag: lote.clasificacionSag || "", corte: lote.corteReal || "" 
+            sdp: lote.sdp || "", clasificacionSag: lote.clasificacionSag || "", corte: lote.corteReal || "",
+            contratista: lote.contratista || "" 
           }));
           batchPromises.push(qrPromise);
         }
@@ -431,7 +465,7 @@ export default function TarjasManager({ camposList, empresasMaestras }) {
             fechaStr, empresaNombre: lote.empresa.replace(" SPA", ""), logoUrl: logoBase,
             campo: lote.campo, centroCosto: lote.centroCosto, especie: lote.especie || "",
             variedad: lote.variedad || "", sdp: lote.sdp || "", clasificacionSag: lote.clasificacionSag || "",
-            corte: lote.corteReal || "", codCsg: lote.codCsg || ""
+            corte: lote.corteReal || "", codCsg: lote.codCsg || "", contratista: lote.contratista || ""
           });
         }
       }
@@ -512,7 +546,7 @@ export default function TarjasManager({ camposList, empresasMaestras }) {
           ) : (
             <select 
               value={empresaIdx} 
-              onChange={e => { setEmpresaIdx(Number(e.target.value)); setCampoSeleccionado(""); setCentroSeleccionado(""); setTarjas([]); setCortesSeleccionados([]); setCorteManual(""); }} 
+              onChange={e => { setEmpresaIdx(Number(e.target.value)); setCampoSeleccionado(""); setCentroSeleccionado(""); setTarjas([]); setCortesSeleccionados([]); setCorteManual(""); setContratistaCosecha(""); }} 
               style={{ fontWeight: "bold", width: "100%", padding: "10px", border:`2px solid ${(isTorretagle && modoTorretagle === "bins") ? "#16a34a" : "#001254"}`, borderRadius: "6px" }}
             >
               {empresasMaestras.map((emp, idx) => (
@@ -523,6 +557,25 @@ export default function TarjasManager({ camposList, empresasMaestras }) {
         </div>
 
         <div className="form-group"><label>FECHA DE COSECHA</label><input type="date" value={fecha} onChange={e => { setFecha(e.target.value); setTarjas([]); }} /></div>
+
+        <div className="form-group">
+          <label>CONTRATISTA (Opcional)</label>
+          <select
+            style={selectStyle}
+            value={contratistaCosecha}
+            onChange={e => { setContratistaCosecha(e.target.value); setTarjas([]); }}
+          >
+            <option value="">-- Sin contratista --</option>
+            {contratistasCosecha.map(c => (
+              <option key={c.id} value={c.nombre}>{c.nombre}</option>
+            ))}
+          </select>
+          {contratistasCosecha.length === 0 && (
+            <span style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px", display: "block" }}>
+              No hay contratistas asignados a cosecha para esta empresa.
+            </span>
+          )}
+        </div>
         
         <div className="form-group">
           <label>CAMPO / FUNDO *</label>
@@ -680,11 +733,15 @@ export default function TarjasManager({ camposList, empresasMaestras }) {
           <h4 style={{ marginBottom: "15px", color: "#1e293b" }}>Vista Previa Bins (100x70 QR Gigante)</h4>
           <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "15px", maxHeight: "400px", overflowY: "auto", background: "#f8fafc", padding: "15px", borderRadius: "8px", border: "1px solid #e2e8f0", width: "100%" }}>
             {tarjas.map((t, idx) => (
-              <div key={idx} style={{ background: "#fff", padding: "15px", borderRadius: "6px", width: "380px", height: "266px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", border: "2px solid #cbd5e1", boxShadow: "0 4px 6px rgba(0,0,0,0.1)" }}>
-                <div style={{ fontSize: "20px", fontWeight: "900", marginBottom: "5px", letterSpacing: "1px" }}>{t.empresaNombre.toUpperCase()} (R)</div>
-                <div style={{ fontSize: "14px", fontWeight: "bold", marginBottom: "10px", color: "#333" }}>C.COSTO: {t.centroCosto}</div>
-                <img src={t.qrUrl} alt="QR" style={{ width: "130px", height: "130px", objectFit: "contain" }} />
-                <div style={{ fontWeight: "900", fontSize: "28px", marginTop: "10px" }}>{t.codigo}</div>
+              <div key={idx} style={{ background: "#fff", padding: "10px 15px", borderRadius: "6px", width: "380px", height: "266px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "space-between", border: "2px solid #cbd5e1", boxShadow: "0 4px 6px rgba(0,0,0,0.1)" }}>
+                <div style={{ width: "100%", textAlign: "center" }}>
+                  <div style={{ fontSize: "17px", fontWeight: "900", letterSpacing: "0.5px", lineHeight: "1.05" }}>{t.empresaNombre.toUpperCase()} (R)</div>
+                  <div style={{ fontSize: "13px", fontWeight: "bold", color: "#333", lineHeight: "1.1" }}>CUARTEL: {t.centroCosto}</div>
+                  {t.contratista && <div style={{ fontSize: "13px", fontWeight: "bold", color: "#333", lineHeight: "1.1", marginTop: "2px" }}>CONTRATISTA: {t.contratista}</div>}
+                  <div style={{ fontSize: "13px", fontWeight: "bold", color: "#333", lineHeight: "1.1" }}>FECHA: {t.fechaStr}</div>
+                </div>
+                <img src={t.qrUrl} alt="QR" style={{ width: "110px", height: "110px", objectFit: "contain", flexShrink: 0 }} />
+                <div style={{ fontWeight: "900", fontSize: "24px", letterSpacing: "1px" }}>{t.codigo}</div>
               </div>
             ))}
           </div>
@@ -783,9 +840,21 @@ export default function TarjasManager({ camposList, empresasMaestras }) {
                     </td>
 
                     <td style={{textAlign: "center"}}>
-                      <button className="btn-action" onClick={() => reimprimirLote(lote)} style={{ background: "#f1f5f9", padding: "6px 12px", borderRadius: "6px", fontWeight: "bold", border: "1px solid #cbd5e1" }}>
-                        🖨️ Reimprimir
-                      </button>
+                      <div style={{ display: "inline-flex", gap: "8px", alignItems: "center" }}>
+                        <button className="btn-action" onClick={() => reimprimirLote(lote)} style={{ background: "#f1f5f9", padding: "6px 12px", borderRadius: "6px", fontWeight: "bold", border: "1px solid #cbd5e1" }}>
+                          🖨️ Reimprimir
+                        </button>
+                        {userRole === "Admin" && (
+                          <button
+                            className="btn-action"
+                            title="Eliminar lote del historial"
+                            onClick={() => eliminarLote(lote)}
+                            style={{ background: "#fef2f2", padding: "6px 12px", borderRadius: "6px", fontWeight: "bold", border: "1px solid #fecaca", color: "#dc2626" }}
+                          >
+                            🗑️ Eliminar
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
