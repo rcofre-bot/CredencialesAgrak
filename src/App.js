@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo, lazy, Suspense } from "react";
 import {
-  collection, addDoc, doc, updateDoc, setDoc, getDoc, getDocs, query, where, serverTimestamp, writeBatch, deleteDoc, onSnapshot, orderBy, limit, runTransaction
+  collection, addDoc, doc, updateDoc, setDoc, getDocs, query, where, serverTimestamp, writeBatch, deleteDoc, onSnapshot, orderBy, limit, runTransaction
 } from "firebase/firestore";
-import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
-import { db, auth, googleProvider } from "./firebase";
+import { db } from "./firebase";
+import useAuth from "./hooks/useAuth";
 import toast, { Toaster } from "react-hot-toast";
 import "./App.css";
 
@@ -20,13 +20,8 @@ const QRCard = lazy(() => import("./components/QRCard"));
 const CuadrillasManager = lazy(() => import("./components/CuadrillasManager"));
 
 export default function App() {
-  const [user, setUser] = useState(null);
-  const [authLoading, setAuthLoading] = useState(true);
-  
-  const [userRole, setUserRole] = useState(null); 
-  const [userEmpresa, setUserEmpresa] = useState(null); 
-  const [isOnline, setIsOnline] = useState(typeof navigator !== "undefined" ? navigator.onLine : true);
-  
+  const { user, authLoading, userRole, userEmpresa, isOnline, initialView, login, logout, revokeAccess } = useAuth();
+
   const [workers, setWorkers] = useState([]);
   const [contractors, setContractors] = useState([]);
   const [credentials, setCredentials] = useState([]);
@@ -42,44 +37,11 @@ export default function App() {
   const [filterEstado, setFilterEstado] = useState("Todos");
   const [filterEmpresaList, setFilterEmpresaList] = useState("TODAS"); 
 
+  // Aplica la vista inicial que sugiere el hook de auth según el rol,
+  // al iniciar sesión. (Antes esto se hacía dentro del listener de auth.)
   useEffect(() => {
-    const handleOnline = () => { setIsOnline(true); toast.success("Conexión restablecida."); };
-    const handleOffline = () => { setIsOnline(false); toast.error("Sin internet. Trabajando offline."); };
-    window.addEventListener("online", handleOnline); window.addEventListener("offline", handleOffline);
-    return () => { window.removeEventListener("online", handleOnline); window.removeEventListener("offline", handleOffline); };
-  }, []);
-
-  useEffect(() => {
-    return onAuthStateChanged(auth, async (u) => {
-      setUser(u);
-      if (u) {
-        try {
-          const roleDoc = await getDoc(doc(db, "userRoles", u.email.toLowerCase()));
-          if (roleDoc.exists()) {
-            const assignedRole = roleDoc.data().rol;
-            const assignedEmpresa = roleDoc.data().empresaRut || "TODAS";
-            
-            setUserRole(assignedRole);
-            setUserEmpresa(assignedEmpresa);
-            
-            if (assignedRole === "Operador") setView("tarjas");
-            else setView("workers_list");
-          } else {
-            setUserRole("Desconocido"); 
-            setUserEmpresa(null);
-          }
-        } catch (error) {
-          console.error("Acceso denegado:", error);
-          setUserRole("Desconocido");
-          setUserEmpresa(null);
-        }
-      } else {
-        setUserRole(null);
-        setUserEmpresa(null);
-      }
-      setAuthLoading(false);
-    });
-  }, []);
+    if (userRole && userRole !== "Desconocido") setView(initialView);
+  }, [userRole, initialView]);
 
   useEffect(() => {
     if (!user || userRole === "Desconocido" || userRole === null || userEmpresa === null) return;
@@ -89,7 +51,7 @@ export default function App() {
     
     const handleError = (error) => {
       console.error("Error de Lectura Firebase:", error);
-      if (error.code === "permission-denied") setUserRole("Desconocido");
+      if (error.code === "permission-denied") revokeAccess();
     };
 
     let qcampos, qworkers, qcontractors, qcred;
@@ -157,10 +119,10 @@ export default function App() {
 
     setLoadingData(false);
     return () => unsubs.forEach(unsub => unsub());
-  }, [user, userRole, userEmpresa]);
+  }, [user, userRole, userEmpresa, revokeAccess]);
 
-  const handleLogin = async () => { try { await signInWithPopup(auth, googleProvider); } catch (e) { toast.error("Error al ingresar"); } };
-  const handleLogout = async () => { await signOut(auth); setView("tarjas"); setUserRole(null); setUserEmpresa(null); };
+  const handleLogin = login;
+  const handleLogout = async () => { await logout(); setView("tarjas"); };
 
   const handleBulkUploadCredentials = async (credsArray, targetEmpresa) => {
     setLoadingData(true);

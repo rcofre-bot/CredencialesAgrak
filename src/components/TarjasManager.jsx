@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { collection, query, onSnapshot, addDoc, serverTimestamp, where, deleteDoc, doc } from "firebase/firestore";
+import { collection, query, onSnapshot, addDoc, serverTimestamp, where, getDocs, deleteDoc, doc } from "firebase/firestore";
 import { db } from "../firebase"; 
 import QRCode from "qrcode";
 import toast from "react-hot-toast";
@@ -16,6 +16,12 @@ export default function TarjasManager({ camposList, empresasMaestras, contractor
 
   const [fecha, setFecha] = useState(new Date().toISOString().split("T")[0]);
 
+  // ESTADOS DE LA COSECHA
+  const [historialGeneral, setHistorialGeneral] = useState([]);
+  const [cosechaActiva, setCosechaActiva] = useState("");
+  const [modoNuevaCosecha, setModoNuevaCosecha] = useState(false);
+  const [inputNuevaCosecha, setInputNuevaCosecha] = useState("");
+
   const [contratistaCosecha, setContratistaCosecha] = useState("");
   
   const [campoSeleccionado, setCampoSeleccionado] = useState("");
@@ -30,9 +36,6 @@ export default function TarjasManager({ camposList, empresasMaestras, contractor
   
   const [cantidad, setCantidad] = useState(10);
   
-  const [historial, setHistorial] = useState([]);
-  const [inicio, setInicio] = useState(1);
-  
   const [tarjas, setTarjas] = useState([]);
   const [procesando, setProcesando] = useState(false);
   const [generando, setGenerando] = useState(false);
@@ -43,7 +46,7 @@ export default function TarjasManager({ camposList, empresasMaestras, contractor
 
   // Contratistas marcados como "asignado a cosecha" de la empresa activa
   const contratistasCosecha = (contractorsList || []).filter(
-    c => c.asignadoCosecha && c.estado === "Activo" && c.empresaRut === empresaActiva?.rut
+    c => c.esCosecha && c.estado === "Activo" && (c.empresaRut === empresaActiva?.rut || c.empresaRut === "TODAS")
   );
   
   const listaCamposFiltrados = camposList.filter(c => {
@@ -85,23 +88,34 @@ export default function TarjasManager({ camposList, empresasMaestras, contractor
     setCentroSeleccionado("");
     setCortesSeleccionados([]);
     setCorteManual("");
+    setCosechaActiva("");
+    setModoNuevaCosecha(false);
   }, [empresaActiva, modoTorretagle]);
 
   useEffect(() => {
     if (!empresaActiva) return;
     const q = query(collection(db, "tarjas_history"), where("empresaRut", "==", empresaActiva.rut));
     const unsubscribe = onSnapshot(q, (snap) => {
-        let docs = snap.docs.map(d => ({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) }));
+        let docs = snap.docs.map(d => {
+          let data = d.data({ serverTimestamps: 'estimate' });
+          if (data.empresaRut === "76.064.746-2") {
+            if (!data.temporada || data.temporada === "2026" || data.temporada === "NARANJA 2026" || data.temporada === "") {
+              data.temporada = "COSECHA NARANJAS 2026 R2";
+            }
+          }
+          return { id: d.id, ...data };
+        });
+        
         docs.sort((a,b) => (b.creadoEn?.seconds || 0) - (a.creadoEn?.seconds || 0));
-        let maxFin = 0;
-        docs.forEach(d => { if (d.fin && typeof d.fin === 'number' && d.fin > maxFin) maxFin = d.fin; });
-        setInicio(maxFin + 1);
-        setHistorial(docs.slice(0, 150));
+        setHistorialGeneral(docs);
       },
       (error) => { console.warn("Error leyendo historial:", error.message); }
     );
     return () => unsubscribe();
-  }, [empresaActiva, prefijo]);
+  }, [empresaActiva]);
+
+  // EXTRAE LAS COSECHAS EXISTENTES
+  const cosechasDisponibles = [...new Set(historialGeneral.map(h => h.temporada))].filter(Boolean).sort();
 
   let infoCuartel = null;
   if (cortesDisponibles.length > 0 && cortesSeleccionados.length > 0) {
@@ -118,7 +132,44 @@ export default function TarjasManager({ camposList, empresasMaestras, contractor
   const variedadAuto = infoCuartel?.variedad || "";
   const codigoUnicoAuto = infoCuartel?.codigoUnico || ""; 
 
+  // CALCULA EL CONTADOR EN TIEMPO REAL BASADO EN LA COSECHA SELECCIONADA
+  const historialVista = historialGeneral.filter(d => d.temporada === cosechaActiva);
+  let maxFin = 0;
+  historialVista.forEach(d => { if (d.fin && typeof d.fin === 'number' && d.fin > maxFin) maxFin = d.fin; });
+  const inicioCalculado = maxFin + 1;
+
+  // FUNCIÓN PARA ELIMINAR COSECHA
+  const eliminarCosechaActiva = async () => {
+    if (!cosechaActiva) return;
+    const confirmacion = window.confirm(`⚠️ ADVERTENCIA EXTREMA ⚠️\n\n¿Estás completamente seguro de que deseas ELIMINAR la cosecha "${cosechaActiva}" y TODO su historial de impresión en esta empresa?\n\nEsta acción borrará las auditorías y reiniciará los contadores de esa cosecha.`);
+    
+    if (!confirmacion) return;
+
+    setProcesando(true);
+    const toastId = toast.loading("Eliminando cosecha...");
+
+    try {
+      const q = query(
+        collection(db, "tarjas_history"),
+        where("empresaRut", "==", empresaActiva.rut),
+        where("temporada", "==", cosechaActiva)
+      );
+      const snapshot = await getDocs(q);
+      const promesasBorrado = snapshot.docs.map(documento => deleteDoc(doc(db, "tarjas_history", documento.id)));
+      await Promise.all(promesasBorrado);
+
+      toast.success("Cosecha y su historial eliminados.", { id: toastId });
+      setCosechaActiva(""); 
+      setTarjas([]);
+    } catch (error) {
+      console.error(error);
+      toast.error("Hubo un error al eliminar la cosecha.", { id: toastId });
+    }
+    setProcesando(false);
+  };
+
   const generarPrevisualizacion = async () => {
+    if (!cosechaActiva.trim()) { return toast.error("Debes seleccionar o crear una Cosecha / Temporada activa."); }
     if (!campoSeleccionado || !centroSeleccionado) { return toast.error("Selecciona Cuartel para generar."); }
     if (!especieAuto || !variedadAuto) { return toast.error("Este Cuartel no tiene Especie o Variedad asignada."); }
     const cantNum = parseInt(cantidad || 0);
@@ -147,7 +198,7 @@ export default function TarjasManager({ camposList, empresasMaestras, contractor
 
     if (esSecuencial) {
       const batchSize = 50;
-      const numFin = inicio + cantNum - 1;
+      const numFin = inicioCalculado + cantNum - 1;
       
       for (let i = 0; i < cantNum; i += batchSize) {
         const batchPromises = [];
@@ -242,15 +293,18 @@ export default function TarjasManager({ camposList, empresasMaestras, contractor
           border: 1px dashed #ccc; background-color: #fff;
         }
         
-        .header { width: 100%; text-align: center; }
-        .bin-empresa { font-size: 13pt; font-weight: 900; text-transform: uppercase; line-height: 1.1; margin-bottom: 0.5mm; }
-        .bin-cuartel { font-size: 10pt; font-weight: bold; color: #222; text-transform: uppercase; line-height: 1.1; }
-        .bin-contratista { font-size: 10pt; font-weight: bold; color: #222; text-transform: uppercase; line-height: 1.1; margin-top: 0.3mm; }
+        .header { width: 100%; text-align: center; display: flex; flex-direction: column; gap: 0.5mm; }
         
-        .qr-wrapper { flex-grow: 1; display: flex; align-items: center; justify-content: center; width: 100%; min-height: 0; }
-        .bin-qr { width: 38mm; height: 38mm; object-fit: contain; }
+        /* Ajuste de tamaños para evitar que textos muy largos empujen el código QR */
+        .bin-empresa { font-size: 14pt; font-weight: 900; text-transform: uppercase; line-height: 1; margin-bottom: 0.5mm;}
+        .bin-cuartel { font-size: 10pt; font-weight: bold; color: #222; text-transform: uppercase; line-height: 1; }
+        .bin-fecha-cont { font-size: 9pt; font-weight: bold; color: #000; text-transform: uppercase; line-height: 1; margin-top: 0.5mm;}
         
-        .bin-text { font-size: 22pt; font-weight: 900; letter-spacing: 1.5px; line-height: 1; margin-top: 0.5mm; text-align: center; }
+        /* Achicamos mínimamente el QR y controlamos el espacio */
+        .qr-wrapper { flex-grow: 1; display: flex; align-items: center; justify-content: center; width: 100%; margin: 1mm 0; overflow: hidden; }
+        .bin-qr { max-width: 32mm; max-height: 32mm; object-fit: contain; }
+        
+        .bin-text { font-size: 20pt; font-weight: 900; letter-spacing: 1px; line-height: 1; text-align: center; }
       </style>
     </head>
     <body>`;
@@ -260,8 +314,8 @@ export default function TarjasManager({ camposList, empresasMaestras, contractor
           <div class="header">
             <div class="bin-empresa">${t.empresaNombre} (R)</div>
             <div class="bin-cuartel">CUARTEL: ${t.centroCosto}</div>
-            ${t.contratista ? `<div class="bin-contratista">CONTRATISTA: ${t.contratista}</div>` : ''}
-            <div class="bin-contratista">FECHA: ${t.fechaStr}</div>
+            <div class="bin-fecha-cont">FECHA: ${t.fechaStr}</div>
+            ${t.contratista ? `<div class="bin-fecha-cont">CONT: ${t.contratista}</div>` : ''}
           </div>
           <div class="qr-wrapper"><img class="bin-qr" src="${t.qrUrl}" alt="QR" /></div>
           <div class="bin-text">${t.codigo}</div>
@@ -271,7 +325,6 @@ export default function TarjasManager({ camposList, empresasMaestras, contractor
     return html;
   };
 
-  // 🔥 CALIBRACIÓN FINA (CODIGO CSG MILIMÉTRICAMENTE CENTRADO A 38.5mm) 🔥
   const getPlantillaTorretagleTarja = (tarjasAImprimir) => {
     let html = `<!DOCTYPE html>
     <html>
@@ -304,16 +357,11 @@ export default function TarjasManager({ camposList, empresasMaestras, contractor
         }
         
         .box-cantidad  { top: 22mm; left: 32mm; width: 42mm; height: 12mm; font-size: 11pt; }
-        
-        /* CORRECCIÓN: El CSG se movió de 37mm a 38.5mm para el centrado final. */
         .box-csg       { top: 38.5mm; left: 32mm; width: 42mm; height: 12mm; font-size: 11pt; }
-        
         .box-productor { top: 58mm; left: 6mm; width: 68mm; height: 14mm; font-size: 11pt; }
         .box-especie   { top: 79mm; left: 6mm; width: 68mm; height: 14mm; font-size: 11pt; }
-        
         .box-sdp       { top: 109mm; left: 6mm; width: 32mm; height: 14mm; font-size: 10pt; }
         .box-cuartel   { top: 109mm; left: 42mm; width: 32mm; height: 14mm; font-size: 10pt; }
-        
         .box-sag       { top: 135mm; left: 6mm; width: 32mm; height: 14mm; font-size: 10pt; }
         .box-fecha     { top: 135mm; left: 42mm; width: 32mm; height: 14mm; font-size: 10pt; }
       </style>
@@ -347,7 +395,7 @@ export default function TarjasManager({ camposList, empresasMaestras, contractor
     const cantNum = parseInt(cantidad || 0);
 
     const esSecuencial = !isTorretagle || (isTorretagle && modoTorretagle === "bins");
-    const numFin = esSecuencial ? inicio + cantNum - 1 : null;
+    const numFin = esSecuencial ? inicioCalculado + cantNum - 1 : null;
     
     const corteFinalStr = cortesDisponibles.length > 0 ? cortesSeleccionados.join("+") : corteManual;
     let centroCostoImpresion = centroSeleccionado;
@@ -362,6 +410,7 @@ export default function TarjasManager({ camposList, empresasMaestras, contractor
     addDoc(collection(db, "tarjas_history"), {
       empresa: empresaActiva.nombre,
       empresaRut: empresaActiva.rut,
+      temporada: cosechaActiva.toUpperCase(), 
       campo: isTorretagle && modoTorretagle === "bins" ? "MÓDULO BINS" : campoSeleccionado.toUpperCase(),
       centroCosto: centroCostoImpresion.toUpperCase(),
       corteReal: corteFinalStr.toUpperCase(),
@@ -371,9 +420,9 @@ export default function TarjasManager({ camposList, empresasMaestras, contractor
       clasificacionSag: clasificacionSag.toUpperCase(),
       fechaCosecha: fecha,
       codCsg: codCsg.toUpperCase(),
-      prefijo: prefijo,
       contratista: contratistaCosecha || "",
-      inicio: esSecuencial ? inicio : null, 
+      prefijo: prefijo,
+      inicio: esSecuencial ? inicioCalculado : null, 
       cantidad: cantNum,
       fin: esSecuencial ? numFin : null, 
       creadoEn: serverTimestamp()
@@ -409,7 +458,6 @@ export default function TarjasManager({ camposList, empresasMaestras, contractor
   };
 
   const eliminarLote = async (lote) => {
-    // Doble validación: solo Admin puede eliminar (además de las reglas de Firestore).
     if (userRole !== "Admin") {
       toast.error("Solo un administrador puede eliminar lotes.");
       return;
@@ -499,8 +547,8 @@ export default function TarjasManager({ camposList, empresasMaestras, contractor
 
   if (!empresaActiva) return <div>Cargando configuración...</div>;
 
-  const numFinVista = inicio + parseInt(cantidad || 0) - 1;
-  const siguienteCodigoVista = `bin;${prefijo}${String(inicio).padStart(4, '0')}`;
+  const numFinVista = inicioCalculado + parseInt(cantidad || 0) - 1;
+  const siguienteCodigoVista = `bin;${prefijo}${String(inicioCalculado).padStart(4, '0')}`;
   const finVistaCompleto = `bin;${prefijo}${String(numFinVista).padStart(4, '0')}`;
 
   const selectStyle = {
@@ -534,26 +582,97 @@ export default function TarjasManager({ camposList, empresasMaestras, contractor
 
       <div className="form-grid" style={{ marginBottom: "20px", background: "#f8fafc", padding: "20px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
         
-        <div className="form-group" style={{ gridColumn: "1 / -1" }}>
-          <label style={{color: (isTorretagle && modoTorretagle === "bins") ? "#16a34a" : "#001254", fontWeight:"bold"}}>
-            {empresasMaestras.length === 1 ? "EMPRESA EMISORA" : "SELECCIONAR EMPRESA"}
-          </label>
-          
-          {empresasMaestras.length === 1 ? (
-            <div style={{ padding: "12px", background: "#e2e8f0", border: "1px solid #cbd5e1", borderRadius: "6px", fontWeight: "bold", color: "#334155" }}>
-              🏢 {empresasMaestras[0].nombre} - RUT: {empresasMaestras[0].rut}
-            </div>
-          ) : (
-            <select 
-              value={empresaIdx} 
-              onChange={e => { setEmpresaIdx(Number(e.target.value)); setCampoSeleccionado(""); setCentroSeleccionado(""); setTarjas([]); setCortesSeleccionados([]); setCorteManual(""); setContratistaCosecha(""); }} 
-              style={{ fontWeight: "bold", width: "100%", padding: "10px", border:`2px solid ${(isTorretagle && modoTorretagle === "bins") ? "#16a34a" : "#001254"}`, borderRadius: "6px" }}
-            >
-              {empresasMaestras.map((emp, idx) => (
-                <option key={idx} value={idx}>{emp.nombre} - RUT: {emp.rut}</option>
-              ))}
-            </select>
-          )}
+        {/* 🔥 PANEL DE COSECHA INCORPORADO 🔥 */}
+        <div className="form-group" style={{ gridColumn: "1 / -1", display: "flex", gap: "15px" }}>
+          <div style={{ flex: 1 }}>
+            <label style={{color: (isTorretagle && modoTorretagle === "bins") ? "#16a34a" : "#001254", fontWeight:"bold"}}>
+              {empresasMaestras.length === 1 ? "EMPRESA EMISORA" : "SELECCIONAR EMPRESA"}
+            </label>
+            {empresasMaestras.length === 1 ? (
+              <div style={{ padding: "12px", background: "#e2e8f0", border: "1px solid #cbd5e1", borderRadius: "6px", fontWeight: "bold", color: "#334155" }}>
+                🏢 {empresasMaestras[0].nombre} - RUT: {empresasMaestras[0].rut}
+              </div>
+            ) : (
+              <select 
+                value={empresaIdx} 
+                onChange={e => { setEmpresaIdx(Number(e.target.value)); setCampoSeleccionado(""); setCentroSeleccionado(""); setTarjas([]); setCortesSeleccionados([]); setCorteManual(""); setContratistaCosecha(""); }} 
+                style={{ fontWeight: "bold", width: "100%", padding: "10px", border:`2px solid ${(isTorretagle && modoTorretagle === "bins") ? "#16a34a" : "#001254"}`, borderRadius: "6px" }}
+              >
+                {empresasMaestras.map((emp, idx) => (
+                  <option key={idx} value={idx}>{emp.nombre} - RUT: {emp.rut}</option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          <div style={{ flex: 0.7 }}>
+            <label style={{ color: "#b45309", fontWeight:"bold" }}>COSECHA / TEMPORADA ACTIVA</label>
+            {!modoNuevaCosecha ? (
+              <div style={{ display: "flex", gap: "5px" }}>
+                <select 
+                  value={cosechaActiva} 
+                  onChange={e => {
+                    if (e.target.value === "NUEVA") {
+                      setModoNuevaCosecha(true);
+                      setInputNuevaCosecha(especieAuto ? `${especieAuto.toUpperCase()} ${new Date().getFullYear()}` : `${new Date().getFullYear()}`);
+                    } else {
+                      setCosechaActiva(e.target.value);
+                      setTarjas([]);
+                    }
+                  }}
+                  style={{ flex: 1, padding: "10px", borderRadius: "6px", border: "2px solid #b45309", fontWeight: "bold", background: "#fef3c7", outline: "none" }}
+                >
+                  <option value="">-- Selecciona una --</option>
+                  {cosechasDisponibles.map(c => <option key={c} value={c}>🍊 {c}</option>)}
+                  <option value="NUEVA" style={{ fontWeight: "bold", color: "#b45309" }}>➕ CREAR NUEVA COSECHA...</option>
+                </select>
+                
+                {cosechaActiva && (
+                  <button 
+                    onClick={eliminarCosechaActiva}
+                    title="Eliminar esta Cosecha y TODO su historial"
+                    disabled={procesando}
+                    style={{ background: "#fee2e2", color: "#991b1b", border: "1px solid #fca5a5", borderRadius: "6px", padding: "0 15px", fontWeight: "bold", cursor: "pointer", transition: "0.2s" }}
+                  >
+                    🗑️
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div style={{ display: "flex", gap: "5px" }}>
+                <input 
+                  type="text" 
+                  value={inputNuevaCosecha} 
+                  onChange={e => setInputNuevaCosecha(e.target.value.toUpperCase())}
+                  placeholder="Ej: NARANJAS 2026"
+                  style={{ flex: 1, padding: "10px", borderRadius: "6px", border: "2px solid #b45309", fontWeight: "bold", outline: "none" }}
+                  autoFocus
+                />
+                <button 
+                  onClick={() => {
+                    if (inputNuevaCosecha.trim() !== "") {
+                      setCosechaActiva(inputNuevaCosecha.trim());
+                      setModoNuevaCosecha(false);
+                      setTarjas([]);
+                    } else {
+                      toast.error("Ingresa un nombre para la cosecha");
+                    }
+                  }}
+                  title="Guardar Cosecha"
+                  style={{ background: "#b45309", color: "#fff", border: "none", borderRadius: "6px", padding: "0 15px", fontWeight: "bold", cursor: "pointer" }}
+                >
+                  ✓
+                </button>
+                <button 
+                  onClick={() => setModoNuevaCosecha(false)}
+                  title="Cancelar"
+                  style={{ background: "#cbd5e1", color: "#334155", border: "none", borderRadius: "6px", padding: "0 15px", fontWeight: "bold", cursor: "pointer" }}
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="form-group"><label>FECHA DE COSECHA</label><input type="date" value={fecha} onChange={e => { setFecha(e.target.value); setTarjas([]); }} /></div>
@@ -657,9 +776,9 @@ export default function TarjasManager({ camposList, empresasMaestras, contractor
           <input type="number" min="1" max="1000" value={cantidad} onChange={e => { setCantidad(e.target.value); setTarjas([]); }} style={{ borderColor: (isTorretagle && modoTorretagle === "bins") ? "#16a34a" : "#001254", borderWidth: "2px", fontWeight: "bold" }} />
         </div>
         
-        {(!isTorretagle || (isTorretagle && modoTorretagle === "bins")) && (
+        {(!isTorretagle || (isTorretagle && modoTorretagle === "bins")) && cosechaActiva && (
           <div style={{ gridColumn: "1 / -1", textAlign: "center", marginTop: "10px", color: "#16a34a", fontWeight: "bold" }}>
-            ℹ️ Generarás {cantidad || 0} folios secuenciales: Desde <span style={{fontFamily:"monospace", background:"#dcfce7", padding:"2px 6px", borderRadius:"4px"}}>{siguienteCodigoVista}</span> hasta <span style={{fontFamily:"monospace", background:"#dcfce7", padding:"2px 6px", borderRadius:"4px"}}>{finVistaCompleto}</span>
+            ℹ️ Generarás {cantidad || 0} folios secuenciales para la cosecha <strong>{cosechaActiva}</strong>: Desde <span style={{fontFamily:"monospace", background:"#dcfce7", padding:"2px 6px", borderRadius:"4px"}}>{siguienteCodigoVista}</span> hasta <span style={{fontFamily:"monospace", background:"#dcfce7", padding:"2px 6px", borderRadius:"4px"}}>{finVistaCompleto}</span>
           </div>
         )}
       </div>
@@ -728,20 +847,23 @@ export default function TarjasManager({ camposList, empresasMaestras, contractor
         </div>
       )}
 
+      {/* 🔥 VISTA PREVIA CORREGIDA PARA TORRETAGLE BINS 🔥 */}
       {tarjas.length > 0 && isTorretagle && modoTorretagle === "bins" && (
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
           <h4 style={{ marginBottom: "15px", color: "#1e293b" }}>Vista Previa Bins (100x70 QR Gigante)</h4>
           <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "15px", maxHeight: "400px", overflowY: "auto", background: "#f8fafc", padding: "15px", borderRadius: "8px", border: "1px solid #e2e8f0", width: "100%" }}>
             {tarjas.map((t, idx) => (
-              <div key={idx} style={{ background: "#fff", padding: "10px 15px", borderRadius: "6px", width: "380px", height: "266px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "space-between", border: "2px solid #cbd5e1", boxShadow: "0 4px 6px rgba(0,0,0,0.1)" }}>
+              <div key={idx} style={{ background: "#fff", padding: "10px 15px", borderRadius: "6px", width: "380px", height: "266px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "space-between", border: "2px solid #cbd5e1", boxShadow: "0 4px 6px rgba(0,0,0,0.1)", boxSizing: "border-box" }}>
                 <div style={{ width: "100%", textAlign: "center" }}>
                   <div style={{ fontSize: "17px", fontWeight: "900", letterSpacing: "0.5px", lineHeight: "1.05" }}>{t.empresaNombre.toUpperCase()} (R)</div>
                   <div style={{ fontSize: "13px", fontWeight: "bold", color: "#333", lineHeight: "1.1" }}>CUARTEL: {t.centroCosto}</div>
-                  {t.contratista && <div style={{ fontSize: "13px", fontWeight: "bold", color: "#333", lineHeight: "1.1", marginTop: "2px" }}>CONTRATISTA: {t.contratista}</div>}
-                  <div style={{ fontSize: "13px", fontWeight: "bold", color: "#333", lineHeight: "1.1" }}>FECHA: {t.fechaStr}</div>
+                  <div style={{ fontSize: "12px", fontWeight: "bold", color: "#333", lineHeight: "1.1", marginTop: "2px" }}>FECHA: {t.fechaStr}</div>
+                  {t.contratista && <div style={{ fontSize: "12px", fontWeight: "bold", color: "#333", lineHeight: "1.1", marginTop: "2px" }}>CONT: {t.contratista}</div>}
                 </div>
-                <img src={t.qrUrl} alt="QR" style={{ width: "110px", height: "110px", objectFit: "contain", flexShrink: 0 }} />
-                <div style={{ fontWeight: "900", fontSize: "24px", letterSpacing: "1px" }}>{t.codigo}</div>
+                <div style={{flexGrow: 1, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", margin: "4px 0"}}>
+                  <img src={t.qrUrl} alt="QR" style={{ maxHeight: "100px", maxWidth: "100px", objectFit: "contain", flexShrink: 0 }} />
+                </div>
+                <div style={{ fontWeight: "900", fontSize: "24px", letterSpacing: "1px", lineHeight: 1 }}>{t.codigo}</div>
               </div>
             ))}
           </div>
@@ -792,9 +914,11 @@ export default function TarjasManager({ camposList, empresasMaestras, contractor
 
       {/* TABLA DE AUDITORÍA GENERAL */}
       <div style={{ marginTop: "40px" }}>
-        <h4 style={{ marginBottom: "15px", color: "#1e293b" }}>Auditoría de Lotes ({empresaActiva.nombre.replace("AGRICOLA ", "")})</h4>
-        {historial.length === 0 ? (
-           <div className="empty-state"><p>Aún no se han impreso etiquetas en esta empresa.</p></div>
+        <h4 style={{ marginBottom: "15px", color: "#1e293b" }}>Auditoría de Lotes - Cosecha: {cosechaActiva || "Ninguna"}</h4>
+        {historialVista.length === 0 ? (
+           <div className="empty-state">
+             <p>{cosechaActiva ? `Aún no se han impreso etiquetas para ${cosechaActiva}. ¡El contador empezará en 1!` : "Selecciona una cosecha para ver su historial."}</p>
+           </div>
         ) : (
           <div className="table-wrap">
             <table className="workers-table">
@@ -809,9 +933,12 @@ export default function TarjasManager({ camposList, empresasMaestras, contractor
                 </tr>
               </thead>
               <tbody>
-                {historial.map((lote) => (
+                {historialVista.map((lote) => (
                   <tr key={lote.id}>
-                    <td>{lote.creadoEn ? new Date(lote.creadoEn.seconds * 1000).toLocaleString() : "Recién..."}</td>
+                    <td>
+                      {lote.creadoEn ? new Date(lote.creadoEn.seconds * 1000).toLocaleString() : "Recién..."}
+                      <div style={{fontSize: "11px", color: "#64748b", marginTop: "2px"}}><strong>Cosecha:</strong> {lote.temporada || "2026"}</div>
+                    </td>
                     
                     <td>
                       {lote.campo === "MÓDULO BINS" ? (
@@ -829,6 +956,7 @@ export default function TarjasManager({ camposList, empresasMaestras, contractor
                     <td>
                       <div style={{fontWeight: "bold"}}>{lote.campo === "MÓDULO BINS" ? "Módulo Bins" : lote.campo}</div>
                       <div style={{fontSize: "12px", color: "#64748b"}}>C.Costo: {lote.centroCosto}</div>
+                      {lote.contratista && <div style={{fontSize: "11px", color: "#b45309", fontWeight: "bold"}}>Contr: {lote.contratista}</div>}
                     </td>
 
                     <td className="cell-mono" style={{fontWeight: "600"}}>
